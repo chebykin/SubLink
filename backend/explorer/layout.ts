@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/creators", label: "Creators" },
   { href: "/plans", label: "Plans" },
-  { href: "/subscribers", label: "Subscribers" },
+  { href: "/auth-keys", label: "Auth Keys" },
   { href: "/subscriptions", label: "Subscriptions" },
   { href: "/charges", label: "Charges" },
 ];
@@ -99,7 +99,7 @@ export function renderLayout(params: {
             </div>
             <h1 class="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">${escapeHtml(params.title)}</h1>
             <p class="mt-3 max-w-2xl text-sm text-slate-600 sm:text-base">${escapeHtml(
-              params.subtitle ?? "Read-only hackathon ops console for creators, subscribers, subscriptions, charges, and live Unlink state.",
+              params.subtitle ?? "Read-only hackathon ops console for creators, auth keys, subscriptions, charges, and live Unlink state.",
             )}</p>
           </div>
           <div class="flex flex-wrap gap-2">${nav}</div>

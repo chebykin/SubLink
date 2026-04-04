@@ -46,6 +46,10 @@ const CHARGE_STATUSES = ["all", "pending", "success", "failed"] as const;
 type SubscriptionStatusFilter = (typeof SUBSCRIPTION_STATUSES)[number];
 type ChargeStatusFilter = (typeof CHARGE_STATUSES)[number];
 
+function authKeyHref(authKeyId: string): string {
+  return `/auth-keys/${authKeyId}`;
+}
+
 function statusOptions<T extends readonly string[]>(
   values: T,
   selected: string,
@@ -95,7 +99,7 @@ function subscriptionRow(subscription: ExplorerSubscriptionSummary): string[] {
   return [
     renderLink(`/subscriptions/${subscription.id}`, subscription.id, { mono: true }),
     `${renderLink(`/plans/${subscription.planId}`, subscription.planName)}<div class="mt-1 text-xs text-slate-500">${renderLink(`/creators/${subscription.creatorId}`, subscription.creatorName)}</div>`,
-    `${renderLink(`/subscribers/${subscription.authKeyId}`, subscription.authKeyId, { mono: true })}<div class="mt-1 text-xs text-slate-500">${fmt.maskValue(subscription.authPublicKey, { start: 10, end: 8 })}</div>`,
+    `${renderLink(authKeyHref(subscription.authKeyId), subscription.authKeyId, { mono: true })}<div class="mt-1 text-xs text-slate-500">${fmt.maskValue(subscription.authPublicKey, { start: 10, end: 8 })}</div>`,
     `${renderStatusBadge(subscription.status)}<div class="mt-2 text-xs text-slate-500">${fmt.formatNextChargeLabel({
       status: subscription.status,
       nextChargeAt: subscription.nextChargeAt,
@@ -131,13 +135,13 @@ function planRow(plan: ReturnType<typeof listPlans>[number]): string[] {
     `${renderLink(`/creators/${plan.creatorId}`, plan.creatorName)}<div class="mt-1 text-xs text-slate-500 font-mono break-all">${plan.creatorUnlinkAddress}</div>`,
     `${fmt.formatUsdcAtomic(plan.amount)}<div class="mt-1 text-xs text-slate-500">Every ${plan.intervalSeconds}s</div>`,
     `${renderStatusBadge(plan.active ? "active" : "inactive")}<div class="mt-2 text-xs text-slate-500">${plan.activeSubscriptionCount} active / ${plan.subscriptionCount} total</div>`,
-    `${plan.nextChargeAt ? fmt.formatDateTime(plan.nextChargeAt) : "-"}<div class="mt-1 text-xs text-slate-500">${plan.nextChargeAt ? fmt.formatRelativeTime(plan.nextChargeAt) : "No active subscribers"}</div>`,
+    `${plan.nextChargeAt ? fmt.formatDateTime(plan.nextChargeAt) : "-"}<div class="mt-1 text-xs text-slate-500">${plan.nextChargeAt ? fmt.formatRelativeTime(plan.nextChargeAt) : "No active subscriptions"}</div>`,
   ];
 }
 
 function subscriberRow(subscriber: ReturnType<typeof listSubscribers>[number]): string[] {
   return [
-    `${renderLink(`/subscribers/${subscriber.authKeyId}`, subscriber.authKeyId, { mono: true })}<div class="mt-1 text-xs text-slate-500">${fmt.maskValue(subscriber.authPublicKey, { start: 12, end: 10 })}</div>`,
+    `${renderLink(authKeyHref(subscriber.authKeyId), subscriber.authKeyId, { mono: true })}<div class="mt-1 text-xs text-slate-500">${fmt.maskValue(subscriber.authPublicKey, { start: 12, end: 10 })}</div>`,
     `${subscriber.activeSubscriptionCount} active<div class="mt-1 text-xs text-slate-500">${subscriber.subscriptionCount} total subscriptions</div>`,
     `${subscriber.creatorCount} creators<div class="mt-1 text-xs text-slate-500">${subscriber.planCount} plans</div>`,
     `${fmt.formatUsdcAtomic(subscriber.totalSpent)}<div class="mt-1 text-xs text-slate-500">Last charge ${fmt.formatDateTime(subscriber.lastChargedAt)}</div>`,
@@ -154,7 +158,7 @@ function dashboardPage(): string {
       renderSummaryCards([
         renderMetricCard({ label: "Creators", value: asMetric(snapshot.creatorCount), hint: "Operators registered in SQLite" }),
         renderMetricCard({ label: "Plans", value: asMetric(snapshot.planCount), hint: "Recurring products configured" }),
-        renderMetricCard({ label: "Subscribers", value: asMetric(snapshot.subscriberCount), hint: "Grouped by auth key" }),
+        renderMetricCard({ label: "Auth Keys", value: asMetric(snapshot.subscriberCount), hint: "Grouped auth identities" }),
         renderMetricCard({ label: "Subscriptions", value: asMetric(snapshot.subscriptionCount), hint: `${snapshot.activeSubscriptionCount} active` }),
         renderMetricCard({ label: "Charges", value: asMetric(snapshot.chargeCount), hint: `${snapshot.successfulChargeCount} success / ${snapshot.failedChargeCount} failed` }),
         renderMetricCard({ label: "Total charged", value: fmt.formatUsdcAtomic(snapshot.totalCharged), hint: "Successful charges only" }),
@@ -164,7 +168,7 @@ function dashboardPage(): string {
       renderSection(
         "Upcoming Charges",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: snapshot.upcomingSubscriptions.map(subscriptionRow),
           emptyLabel: "No active subscriptions yet.",
         }),
@@ -187,7 +191,7 @@ function dashboardPage(): string {
       renderSection(
         "Subscriptions Requiring Attention",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: snapshot.failingSubscriptions.map(subscriptionRow),
           emptyLabel: "No failing or degraded subscriptions right now.",
         }),
@@ -195,7 +199,7 @@ function dashboardPage(): string {
       renderSection(
         "Newest Subscriptions",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: snapshot.recentSubscriptions.map(subscriptionRow),
           emptyLabel: "No subscriptions yet.",
         }),
@@ -262,7 +266,7 @@ function creatorDetailPage(creatorId: string): string | null {
       renderSection(
         "Subscriptions",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: detail.subscriptions.map(subscriptionRow),
           emptyLabel: "No subscriptions for this creator yet.",
         }),
@@ -332,7 +336,7 @@ function planDetailPage(planId: string): string | null {
       renderSection(
         "Subscriptions",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: detail.subscriptions.map(subscriptionRow),
           emptyLabel: "No subscriptions for this plan yet.",
         }),
@@ -352,17 +356,17 @@ function planDetailPage(planId: string): string | null {
 function subscribersPage(): string {
   const subscribers = listSubscribers();
   return renderLayout({
-    title: "Subscribers",
-    activePath: "/subscribers",
+    title: "Auth Keys",
+    activePath: "/auth-keys",
     content: renderSection(
-      "Grouped Subscribers",
+      "Grouped Auth Keys",
       renderTable({
         columns: ["Auth key", "Subscriptions", "Coverage", "Total spent"],
         rows: subscribers.map(subscriberRow),
-        emptyLabel: "Subscribers will appear after the first subscription is created.",
+        emptyLabel: "Auth keys will appear after the first subscription is created.",
       }),
       {
-        subtitle: "Subscribers are grouped by auth key ID, since there is no separate subscriber table.",
+        subtitle: "Auth keys are grouped identities used for subscriber authorization. They are not the main wallet address or the dedicated Unlink account address.",
       },
     ),
   });
@@ -375,9 +379,9 @@ function subscriberDetailPage(authKeyId: string): string | null {
   }
 
   return renderLayout({
-    title: "Subscriber",
-    activePath: "/subscribers",
-    subtitle: "Grouped subscription history and creator relationships for one auth key.",
+    title: "Auth Key",
+    activePath: "/auth-keys",
+    subtitle: "Grouped subscription history and creator relationships for one derived auth key.",
     content: [
       renderSummaryCards([
         renderMetricCard({ label: "Subscriptions", value: asMetric(detail.subscriber.subscriptionCount), hint: `${detail.subscriber.activeSubscriptionCount} active` }),
@@ -386,7 +390,7 @@ function subscriberDetailPage(authKeyId: string): string | null {
         renderMetricCard({ label: "Last charge", value: fmt.formatDateTime(detail.subscriber.lastChargedAt), hint: fmt.formatRelativeTime(detail.subscriber.lastChargedAt) }),
       ]),
       renderSection(
-        "Subscriber Record",
+        "Auth Key Record",
         renderInfoGrid([
           { label: "Auth key ID", value: detail.subscriber.authKeyId, mono: true },
           { label: "Auth public key", value: fmt.maskValue(detail.subscriber.authPublicKey, { start: 16, end: 12 }) },
@@ -401,7 +405,7 @@ function subscriberDetailPage(authKeyId: string): string | null {
       renderSection(
         "Subscriptions",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: detail.subscriptions.map(subscriptionRow),
           emptyLabel: "No subscriptions linked to this auth key.",
         }),
@@ -411,7 +415,7 @@ function subscriberDetailPage(authKeyId: string): string | null {
         renderTable({
           columns: ["Charge", "Status", "Amount / Subscription", "Plan / Creator", "Created"],
           rows: detail.charges.map(chargeRow),
-          emptyLabel: "No charges yet for this subscriber.",
+          emptyLabel: "No charges yet for this auth key.",
         }),
       ),
     ].join(""),
@@ -447,12 +451,12 @@ function subscriptionsPage(params: {
     activePath: "/subscriptions",
     content: [
       renderSection("Filter", filters, {
-        subtitle: "Narrow subscriptions by creator, plan, subscriber auth key, or lifecycle status.",
+        subtitle: "Narrow subscriptions by creator, plan, auth key, or lifecycle status.",
       }),
       renderSection(
         "Subscription Ledger",
         renderTable({
-          columns: ["Subscription", "Plan / Creator", "Subscriber", "Status", "Spent", "Next charge"],
+          columns: ["Subscription", "Plan / Creator", "Auth Key", "Status", "Spent", "Next charge"],
           rows: subscriptions.map(subscriptionRow),
           emptyLabel: "No subscriptions match these filters.",
         }),
@@ -524,7 +528,7 @@ async function subscriptionDetailPage(subscriptionId: string): Promise<string | 
           actions: [
             renderPillLink(`/creators/${detail.creator.id}`, "Open creator"),
             renderPillLink(`/plans/${detail.plan.id}`, "Open plan"),
-            renderPillLink(`/subscribers/${detail.subscriber.authKeyId}`, "Open subscriber"),
+            renderPillLink(authKeyHref(detail.subscriber.authKeyId), "Open auth key"),
           ].join(""),
         },
       ),
@@ -605,7 +609,7 @@ function chargeDetailPage(chargeId: string): string | null {
           { label: "Subscription ID", value: detail.subscription.id, mono: true },
           { label: "Plan", value: `${detail.plan.name} (${detail.plan.id})` },
           { label: "Creator", value: `${detail.creator.name} (${detail.creator.id})` },
-          { label: "Subscriber", value: detail.subscriber.authKeyId, mono: true },
+          { label: "Auth key", value: detail.subscriber.authKeyId, mono: true },
           { label: "Unlink tx ID", value: detail.charge.unlinkTxId ?? "-", mono: true },
         ]),
         {
@@ -613,7 +617,7 @@ function chargeDetailPage(chargeId: string): string | null {
             renderPillLink(`/subscriptions/${detail.subscription.id}`, "Open subscription"),
             renderPillLink(`/plans/${detail.plan.id}`, "Open plan"),
             renderPillLink(`/creators/${detail.creator.id}`, "Open creator"),
-            renderPillLink(`/subscribers/${detail.subscriber.authKeyId}`, "Open subscriber"),
+            renderPillLink(authKeyHref(detail.subscriber.authKeyId), "Open auth key"),
           ].join(""),
         },
       ),
@@ -650,13 +654,17 @@ explorerApp.get("/plans/:planId", (c) => {
     ? c.html(page)
     : renderNotFoundPage("Plan not found", "No plan matched this id.", "/plans");
 });
-explorerApp.get("/subscribers", (c) => c.html(subscribersPage()));
-explorerApp.get("/subscribers/:authKeyId", (c) => {
+explorerApp.get("/auth-keys", (c) => c.html(subscribersPage()));
+explorerApp.get("/auth-keys/:authKeyId", (c) => {
   const page = subscriberDetailPage(c.req.param("authKeyId"));
   return page
     ? c.html(page)
-    : renderNotFoundPage("Subscriber not found", "No grouped subscriber matched this auth key.", "/subscribers");
+    : renderNotFoundPage("Auth key not found", "No grouped auth key matched this identifier.", "/auth-keys");
 });
+explorerApp.get("/subscribers", (c) => c.redirect("/auth-keys", 301));
+explorerApp.get("/subscribers/:authKeyId", (c) =>
+  c.redirect(authKeyHref(c.req.param("authKeyId")), 301),
+);
 explorerApp.get("/subscriptions", (c) => {
   const rawStatus = c.req.query("status") ?? "all";
   const status = SUBSCRIPTION_STATUSES.includes(rawStatus as SubscriptionStatusFilter)

@@ -42,6 +42,7 @@ const defaultDbPath = new URL("../data/sublink.db", import.meta.url).pathname;
 export const DB_PATH = readOptionalEnv("DB_PATH") ?? defaultDbPath;
 
 export const SERVER_PORT = readNumberEnv("PORT", 3000);
+export const EXPLORER_PORT = readNumberEnv("EXPLORER_PORT", 3001);
 export const SUBLINK_API_URL =
   readOptionalEnv("SUBLINK_API_URL") ?? `http://localhost:${SERVER_PORT}`;
 

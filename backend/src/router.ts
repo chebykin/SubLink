@@ -1,3 +1,7 @@
+import { Hono } from "hono";
+
+import { HttpError, errorResponse } from "./http";
+import { logRejectedHttpResponse } from "./log";
 import { handleRunCron } from "./routes/admin";
 import { handleGetCharges } from "./routes/charges";
 import { handleCreateCreator, handleGetCreator } from "./routes/creators";
@@ -9,161 +13,57 @@ import {
   handleSubscribe,
 } from "./routes/subscriptions";
 import { handleVerify } from "./routes/verify";
-import { HttpError, errorResponse } from "./http";
-import { logError, logWarn } from "./log";
 
-function matchPath(pathname: string, pattern: RegExp): string[] | null {
-  const match = pathname.match(pattern);
-  if (!match) {
-    return null;
-  }
-  return match.slice(1).map((value) => decodeURIComponent(value));
-}
+export const apiApp = new Hono();
 
-export async function handleRequest(request: Request): Promise<Response> {
-  const { pathname } = new URL(request.url);
-  const method = request.method.toUpperCase();
+apiApp.use("*", async (c, next) => {
   const startedAt = Date.now();
+  await next();
+  c.res = await logRejectedHttpResponse({
+    scope: "api",
+    method: c.req.method.toUpperCase(),
+    pathname: c.req.path,
+    startedAt,
+    response: c.res,
+  });
+});
 
-  async function logRejectedResponse(response: Response): Promise<Response> {
-    if (response.status < 400) {
-      return response;
-    }
+apiApp.get("/health", () => handleHealth());
 
-    const durationMs = Date.now() - startedAt;
-    let bodyText: string | undefined;
+apiApp.post("/creators", (c) => handleCreateCreator(c.req.raw));
+apiApp.get("/creators/:creatorId", (c) => handleGetCreator(c.req.param("creatorId")));
 
-    try {
-      bodyText = await response.clone().text();
-    } catch {
-      bodyText = undefined;
-    }
+apiApp.post("/plans", (c) => handleCreatePlan(c.req.raw));
+apiApp.get("/plans", (c) => handleListPlans(c.req.raw));
+apiApp.get("/plans/:planId", (c) => handleGetPlan(c.req.param("planId")));
 
-    const details = {
-      method,
-      pathname,
-      status: response.status,
-      durationMs,
-      body: bodyText,
-    };
+apiApp.post("/subscribe", (c) => handleSubscribe(c.req.raw));
+apiApp.get("/subscriptions", (c) => handleListSubscriptions(c.req.raw));
+apiApp.delete("/subscriptions/:subscriptionId", (c) =>
+  handleCancelSubscription(c.req.param("subscriptionId"), c.req.raw),
+);
 
-    if (response.status >= 500) {
-      logError("http.request.rejected", details);
-    } else {
-      logWarn("http.request.rejected", details);
-    }
+apiApp.get("/charges/:subscriptionId", (c) =>
+  handleGetCharges(c.req.param("subscriptionId"), c.req.raw),
+);
 
-    return response;
+apiApp.post("/admin/run-cron", (c) => handleRunCron(c.req.raw));
+
+apiApp.get("/verify/:planId", (c) => handleVerify(c.req.param("planId"), c.req.raw));
+
+apiApp.notFound(() => errorResponse(404, "Route not found."));
+
+apiApp.onError((error) => {
+  if (error instanceof HttpError) {
+    return errorResponse(error.status, error.message, error.details);
   }
 
-  try {
-    // Public: no user data
-    if (method === "GET" && pathname === "/health") {
-      return logRejectedResponse(handleHealth());
-    }
+  return errorResponse(
+    500,
+    error instanceof Error ? error.message : "Unexpected server error.",
+  );
+});
 
-    // Public: open registration (no creator auth implemented yet)
-    if (method === "POST" && pathname === "/creators") {
-      return logRejectedResponse(await handleCreateCreator(request));
-    }
-
-    // Public: returns name + unlink address, no apiKey
-    if (method === "GET") {
-      const creatorMatch = matchPath(pathname, /^\/creators\/([^/]+)$/);
-      if (creatorMatch) {
-        const [creatorId] = creatorMatch;
-        if (creatorId) {
-          return logRejectedResponse(handleGetCreator(creatorId));
-        }
-      }
-    }
-
-    // Public: creators create plans without auth (no creator auth implemented yet)
-    if (method === "POST" && pathname === "/plans") {
-      return logRejectedResponse(await handleCreatePlan(request));
-    }
-
-    // Public: plan discovery for subscribers
-    if (method === "GET" && pathname === "/plans") {
-      return logRejectedResponse(handleListPlans(request));
-    }
-
-    // Public: includes creator unlink address needed for subscribe flow
-    if (method === "GET") {
-      const planMatch = matchPath(pathname, /^\/plans\/([^/]+)$/);
-      if (planMatch) {
-        const [planId] = planMatch;
-        if (planId) {
-          return logRejectedResponse(handleGetPlan(planId));
-        }
-      }
-    }
-
-    // Sensitive input: receives spending keys over HTTPS, keys stripped from all responses
-    if (method === "POST" && pathname === "/subscribe") {
-      return logRejectedResponse(await handleSubscribe(request));
-    }
-
-    // Bearer-gated: only returns caller's own subscriptions, keys stripped
-    if (method === "GET" && pathname === "/subscriptions") {
-      return logRejectedResponse(await handleListSubscriptions(request));
-    }
-
-    // Bearer-gated + owner check: prevents cancelling others' subscriptions
-    if (method === "DELETE") {
-      const subscriptionMatch = matchPath(pathname, /^\/subscriptions\/([^/]+)$/);
-      if (subscriptionMatch) {
-        const [subscriptionId] = subscriptionMatch;
-        if (subscriptionId) {
-          return logRejectedResponse(
-            await handleCancelSubscription(subscriptionId, request),
-          );
-        }
-      }
-    }
-
-    // Bearer-gated + owner check: charge history reveals payment timing/amounts
-    if (method === "GET") {
-      const chargesMatch = matchPath(pathname, /^\/charges\/([^/]+)$/);
-      if (chargesMatch) {
-        const [subscriptionId] = chargesMatch;
-        if (subscriptionId) {
-          return logRejectedResponse(
-            await handleGetCharges(subscriptionId, request),
-          );
-        }
-      }
-    }
-
-    // Admin key required: manual trigger on top of the already-running setInterval loop
-    if (method === "POST" && pathname === "/admin/run-cron") {
-      return logRejectedResponse(await handleRunCron(request));
-    }
-
-    // Creator API key required: reveals if a subscriber is active for a plan
-    if (method === "GET") {
-      const verifyMatch = matchPath(pathname, /^\/verify\/([^/]+)$/);
-      if (verifyMatch) {
-        const [planId] = verifyMatch;
-        if (planId) {
-          return logRejectedResponse(await handleVerify(planId, request));
-        }
-      }
-    }
-
-    return logRejectedResponse(errorResponse(404, "Route not found."));
-  } catch (error) {
-    if (error instanceof HttpError) {
-      return logRejectedResponse(
-        errorResponse(error.status, error.message, error.details),
-      );
-    }
-
-    return logRejectedResponse(
-      errorResponse(
-        500,
-        error instanceof Error ? error.message : "Unexpected server error.",
-      ),
-    );
-  }
+export function handleRequest(request: Request): Promise<Response> {
+  return Promise.resolve(apiApp.fetch(request));
 }

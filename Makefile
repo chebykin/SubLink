@@ -1,4 +1,16 @@
-.PHONY: test-api-key reset-backend-db
+.PHONY: backend frontend mock-a mock-b test-api-key reset-backend-db
+
+backend:
+	bun run backend:dev
+
+frontend:
+	bun run dev:frontend
+
+mock-a:
+	bun run dev:mock-a
+
+mock-b:
+	bun run dev:mock-b
 
 test-api-key:
 	bun run ops/test-api-key.ts

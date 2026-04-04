@@ -16,6 +16,7 @@
       "name": "@sublink/backend",
       "dependencies": {
         "@unlink-xyz/sdk": "^0.0.2-canary.0",
+        "hono": "^4.12.10",
         "viem": "^2.47.10",
       },
     },
@@ -28,16 +29,6 @@
         "@vitejs/plugin-vue": "latest",
         "vite": "latest",
         "vue-tsc": "latest",
-      },
-    },
-    "mock-sites": {
-      "name": "@sublink/mock-sites",
-      "dependencies": {
-        "vue": "latest",
-      },
-      "devDependencies": {
-        "@vitejs/plugin-vue": "latest",
-        "vite": "latest",
       },
     },
     "ops": {
@@ -119,8 +110,6 @@
 
     "@sublink/frontend": ["@sublink/frontend@workspace:frontend"],
 
-    "@sublink/mock-sites": ["@sublink/mock-sites@workspace:mock-sites"],
-
     "@sublink/ops": ["@sublink/ops@workspace:ops"],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg=="],
@@ -190,6 +179,8 @@
     "fdir": ["fdir@6.5.0", "", { "peerDependencies": { "picomatch": "^3 || ^4" }, "optionalPeers": ["picomatch"] }, "sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg=="],
 
     "fsevents": ["fsevents@2.3.3", "", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
+
+    "hono": ["hono@4.12.10", "", {}, "sha512-mx/p18PLy5og9ufies2GOSUqep98Td9q4i/EF6X7yJgAiIopxqdfIO3jbqsi3jRgTgw88jMDEzVKi+V2EF+27w=="],
 
     "ieee754": ["ieee754@1.2.1", "", {}, "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="],
 

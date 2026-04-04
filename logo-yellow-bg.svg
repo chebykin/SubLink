@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0d06b"/>
+      <stop offset="1" stop-color="#e8c453"/>
+    </linearGradient>
+    <linearGradient id="sl-grad" x1="128" y1="128" x2="384" y2="384" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1a2942"/>
+      <stop offset="1" stop-color="#2a3a5a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg-grad)"/>
+  <g transform="translate(128, 128) scale(4)" stroke="url(#sl-grad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M22 16 C16 16, 14 20, 14 24 C14 28, 16 32, 22 32"/>
+    <path d="M22 16 L42 16"/>
+    <path d="M42 16 C48 16, 50 20, 50 24 C50 28, 48 32, 42 32"/>
+    <path d="M42 48 C48 48, 50 44, 50 40 C50 36, 48 32, 42 32"/>
+    <path d="M42 48 L22 48"/>
+    <path d="M22 48 C16 48, 14 44, 14 40 C14 36, 16 32, 22 32"/>
+  </g>
+</svg>

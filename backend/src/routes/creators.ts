@@ -17,12 +17,23 @@ import {
   requireString,
 } from "../http";
 import { logInfo } from "../log";
+import type { CreatorAuthProof } from "../services/creator-auth";
+import { verifyCreatorAuthProof } from "../services/creator-auth";
 
 interface CreateCreatorBody {
-  evmAddress?: unknown;
   unlinkAddress?: unknown;
   name?: unknown;
   webhookUrl?: unknown;
+  proof?: unknown;
+}
+
+interface RevealCreatorBody {
+  proof?: unknown;
+}
+
+interface CreatorAuthProofBody {
+  message?: unknown;
+  signature?: unknown;
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -32,23 +43,39 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function requireCreatorAuthProof(input: unknown): CreatorAuthProof {
+  if (!input || typeof input !== "object") {
+    throw new HttpError(400, "Field 'proof' must be an object.");
+  }
+
+  const proof = input as CreatorAuthProofBody;
+  return {
+    message: requireString(proof.message, "proof.message"),
+    signature: requireString(proof.signature, "proof.signature") as `0x${string}`,
+  };
+}
+
 export async function handleCreateCreator(request: Request): Promise<Response> {
   try {
     const body = await readJsonBody<CreateCreatorBody>(request);
 
-    const evmAddressRaw = requireString(body.evmAddress, "evmAddress");
     const unlinkAddress = requireString(body.unlinkAddress, "unlinkAddress");
     const name = requireString(body.name, "name");
     const webhookUrl =
       body.webhookUrl === undefined || body.webhookUrl === null
         ? undefined
         : requireString(body.webhookUrl, "webhookUrl", { allowEmpty: true });
+    const proof = requireCreatorAuthProof(body.proof);
 
-    if (!isAddress(evmAddressRaw)) {
-      throw new HttpError(400, "evmAddress must be a valid 0x address.");
+    let evmAddress: string;
+    try {
+      evmAddress = await verifyCreatorAuthProof(proof);
+    } catch (error) {
+      throw new HttpError(
+        401,
+        error instanceof Error ? error.message : "Invalid creator auth proof.",
+      );
     }
-
-    const evmAddress = normalizeAddress(evmAddressRaw);
 
     const existing = getCreatorByEvmAddress(evmAddress);
     if (existing) {
@@ -85,6 +112,39 @@ export async function handleCreateCreator(request: Request): Promise<Response> {
     return errorResponse(
       500,
       error instanceof Error ? error.message : "Failed to create creator.",
+    );
+  }
+}
+
+export async function handleRevealCreator(request: Request): Promise<Response> {
+  try {
+    const body = await readJsonBody<RevealCreatorBody>(request);
+    const proof = requireCreatorAuthProof(body.proof);
+
+    let evmAddress: string;
+    try {
+      evmAddress = await verifyCreatorAuthProof(proof);
+    } catch (error) {
+      throw new HttpError(
+        401,
+        error instanceof Error ? error.message : "Invalid creator auth proof.",
+      );
+    }
+
+    const creator = getCreatorByEvmAddress(evmAddress);
+    if (!creator) {
+      return errorResponse(404, "Creator not found.");
+    }
+
+    return jsonResponse(creator);
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return errorResponse(error.status, error.message, error.details);
+    }
+
+    return errorResponse(
+      500,
+      error instanceof Error ? error.message : "Failed to reveal creator.",
     );
   }
 }

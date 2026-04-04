@@ -30,6 +30,7 @@ import {
   verifyBearerToken,
   verifySubscribeProof,
 } from "./services/bearer-token";
+import { buildCreatorAuthMessage } from "./services/creator-auth";
 import {
   runChargeForSubscriptionId,
   resetSubscriptionChargeLocksForTests,
@@ -130,6 +131,15 @@ async function createBearerForAccount(
     expiry,
     signature,
   });
+}
+
+async function createCreatorProofForAccount(
+  account: PrivateKeyAccount,
+  timestamp = new Date().toISOString(),
+): Promise<{ message: string; signature: `0x${string}` }> {
+  const message = buildCreatorAuthMessage(timestamp);
+  const signature = await account.signMessage({ message });
+  return { message, signature };
 }
 
 function createCreatorPlanFixture(params?: {
@@ -312,6 +322,127 @@ test.serial("subscribe proof verification accepts matching auth key", async () =
   ).resolves.toBe(authKeyId);
 
   expect(getAuthKeyIdFromPublicKey(ALICE_AUTH_ACCOUNT.publicKey)).toBe(authKeyId);
+});
+
+test.serial("POST /creators creates a creator from the recovered wallet proof", async () => {
+  const proof = await createCreatorProofForAccount(ALICE_AUTH_ACCOUNT);
+
+  const response = await handleRequest(
+    new Request("http://localhost/creators", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Alice Creator",
+        unlinkAddress: "unlink1creatoralice",
+        proof,
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(201);
+  const body = (await response.json()) as {
+    id: string;
+    apiKey: string;
+  };
+  expect(body.id).toBeString();
+  expect(body.apiKey).toBeString();
+
+  const revealResponse = await handleRequest(
+    new Request("http://localhost/creators/reveal", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        proof: await createCreatorProofForAccount(ALICE_AUTH_ACCOUNT),
+      }),
+    }),
+  );
+
+  expect(revealResponse.status).toBe(200);
+  const revealed = (await revealResponse.json()) as {
+    id: string;
+    apiKey: string;
+    evmAddress: string;
+  };
+
+  expect(revealed.id).toBe(body.id);
+  expect(revealed.apiKey).toBe(body.apiKey);
+  expect(revealed.evmAddress).toBe(ALICE_AUTH_ACCOUNT.address.toLowerCase());
+});
+
+test.serial("POST /creators/reveal returns 404 when the wallet is not registered", async () => {
+  const response = await handleRequest(
+    new Request("http://localhost/creators/reveal", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        proof: await createCreatorProofForAccount(BOB_AUTH_ACCOUNT),
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(404);
+});
+
+test.serial("POST /creators/reveal returns 401 for stale creator proofs", async () => {
+  const proof = await createCreatorProofForAccount(
+    ALICE_AUTH_ACCOUNT,
+    "2026-04-04T22:00:00.000Z",
+  );
+
+  const response = await handleRequest(
+    new Request("http://localhost/creators/reveal", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ proof }),
+    }),
+  );
+
+  expect(response.status).toBe(401);
+});
+
+test.serial("POST /creators/reveal returns 401 for tampered creator proofs", async () => {
+  const proof = await createCreatorProofForAccount(ALICE_AUTH_ACCOUNT);
+  const tamperedProof = {
+    ...proof,
+    signature: `${proof.signature.slice(0, -2)}ff` as `0x${string}`,
+  };
+
+  const response = await handleRequest(
+    new Request("http://localhost/creators/reveal", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ proof: tamperedProof }),
+    }),
+  );
+
+  expect(response.status).toBe(401);
+});
+
+test.serial("POST /creators rejects missing proofs", async () => {
+  const response = await handleRequest(
+    new Request("http://localhost/creators", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Alice Creator",
+        unlinkAddress: "unlink1creatoralice",
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(400);
 });
 
 test.serial("bearer token parsing validates format", () => {

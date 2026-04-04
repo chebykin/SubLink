@@ -22,6 +22,7 @@ export const CHAIN_ID = 84532 as const;
 export const RPC_URL = "https://sepolia.base.org" as const;
 export const AUTH_PROOF_PREFIX = "sublink-subscribe-v1" as const;
 export const AUTH_BEARER_PREFIX = "sublink-bearer-v1" as const;
+export const CREATOR_AUTH_PREFIX = "sublink-creator-v1" as const;
 
 export const CRON_INTERVAL_MS = readNumberEnv("CRON_INTERVAL_MS", 60_000);
 export const MAX_CONSECUTIVE_FAILURES = readNumberEnv(
@@ -36,6 +37,10 @@ export const BEARER_TOKEN_MAX_AGE_SECONDS = readNumberEnv(
 export const BEARER_TOKEN_CLOCK_SKEW_SECONDS = readNumberEnv(
   "BEARER_TOKEN_CLOCK_SKEW_SECONDS",
   30,
+);
+export const CREATOR_AUTH_CLOCK_SKEW_SECONDS = readNumberEnv(
+  "CREATOR_AUTH_CLOCK_SKEW_SECONDS",
+  60,
 );
 
 export const PENDING_ACTIVATION_RETRY_SECONDS = readNumberEnv(

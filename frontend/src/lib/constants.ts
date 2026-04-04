@@ -12,5 +12,6 @@ export const AUTH_PROOF_PREFIX = "sublink-subscribe-v1";
 export const BEARER_TOKEN_LIFETIME_SECONDS = 86_400;
 
 export const GITHUB_URL = "https://github.com/chebykin/SubLink";
-export const CREATOR_1_URL = import.meta.env.VITE_CREATOR_1_URL || "http://localhost:7001";
-export const CREATOR_2_URL = import.meta.env.VITE_CREATOR_2_URL || "http://localhost:7002";
+export const EXPLORER_URL = import.meta.env.VITE_EXPLORER_URL || "https://explorer.sublink.lol";
+export const CREATOR_1_URL = import.meta.env.VITE_CREATOR_1_URL || "https://creator-1.sublink.lol";
+export const CREATOR_2_URL = import.meta.env.VITE_CREATOR_2_URL || "https://creator-2.sublink.lol";

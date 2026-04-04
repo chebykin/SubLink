@@ -24,12 +24,10 @@ function close() {
     <Transition name="dropdown">
       <div v-if="open" class="dropdown-menu">
         <a :href="CREATOR_1_URL" target="_blank" rel="noopener" class="dropdown-item" @click="close">
-          <span class="item-label">Creator 1</span>
-          <span class="item-desc">Example creator site</span>
+          Creator 1
         </a>
         <a :href="CREATOR_2_URL" target="_blank" rel="noopener" class="dropdown-item" @click="close">
-          <span class="item-label">Creator 2</span>
-          <span class="item-desc">Example creator site</span>
+          Creator 2
         </a>
       </div>
     </Transition>
@@ -72,44 +70,33 @@ function close() {
 
 .dropdown-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: 100%;
   right: 0;
-  min-width: 180px;
+  min-width: 140px;
+  padding-top: 6px;
+  z-index: 100;
+  transform-origin: top right;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 4px;
   box-shadow: 0 0 0 1px var(--accent-soft), 0 12px 40px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(16px);
-  z-index: 100;
-  transform-origin: top right;
 }
 
 .dropdown-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px;
+  display: block;
+  padding: 6px 12px;
   color: var(--text-secondary);
   text-decoration: none;
+  font-size: 0.8125rem;
   border-radius: var(--radius-sm);
   transition: all 0.12s ease;
+  margin: 2px 4px;
 }
 
 .dropdown-item:hover {
   color: var(--text-primary);
   background: var(--accent-soft);
-  transform: translateX(2px);
-}
-
-.item-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.item-desc {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
 }
 
 .dropdown-enter-active {

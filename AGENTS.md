@@ -2,6 +2,9 @@
 
 * Specifications should live at `specs/spec-{timestamp}.md` with the most recent
   spec available at `specs/spec.md`.
+* Spec headers should include the date and hour:minute derived from the
+  filename timestamp. Example:
+  `specs/spec-20260404143823.md` -> `2026-04-04 14:38`.
 * If we redesign something there should be a new complete spec created with a
   current timestamp. Thus we cann see the decision flow over the time.
 

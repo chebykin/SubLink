@@ -68,6 +68,11 @@ onMounted(() => {
 <style scoped>
 .logo {
   transition: filter 0.6s ease;
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 6px var(--accent-soft));
 }
 
 .links path {

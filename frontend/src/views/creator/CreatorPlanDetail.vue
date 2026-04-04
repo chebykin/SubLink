@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import StatusBadge from "../../components/StatusBadge.vue";
+import CopyButton from "../../components/CopyButton.vue";
 import LoadingSkeleton from "../../components/LoadingSkeleton.vue";
 import { useToast } from "../../composables/useToast";
 import * as api from "../../lib/api";
@@ -26,7 +27,7 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <router-link to="/creator/plans" class="back-link">&larr; Back to Plans</router-link>
+    <router-link to="/creator/plans" class="back-link"><span class="back-arrow">&larr;</span> Back to Plans</router-link>
 
     <div v-if="loading" class="card detail-card">
       <LoadingSkeleton :lines="5" height="20px" />
@@ -67,7 +68,10 @@ onMounted(async () => {
 
       <div class="detail-id">
         <span class="detail-label">Plan ID</span>
-        <code>{{ plan.id }}</code>
+        <div class="id-row">
+          <code>{{ plan.id }}</code>
+          <CopyButton :text="plan.id" label="Plan ID" />
+        </div>
       </div>
     </div>
   </div>
@@ -79,7 +83,9 @@ onMounted(async () => {
 }
 
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin-bottom: 20px;
   color: var(--text-secondary);
   text-decoration: none;
@@ -89,6 +95,15 @@ onMounted(async () => {
 
 .back-link:hover {
   color: var(--accent);
+}
+
+.back-arrow {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.back-link:hover .back-arrow {
+  transform: translateX(-3px);
 }
 
 .detail-card {
@@ -152,9 +167,16 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-.detail-id code {
-  display: block;
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 6px;
+}
+
+.detail-id code {
+  flex: 1;
+  display: block;
   padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -163,4 +185,13 @@ onMounted(async () => {
   color: var(--text-secondary);
   word-break: break-all;
 }
+
+.detail-grid > * {
+  animation: fade-in-up 0.3s var(--ease-decel) both;
+}
+
+.detail-grid > *:nth-child(1) { animation-delay: 0ms; }
+.detail-grid > *:nth-child(2) { animation-delay: 50ms; }
+.detail-grid > *:nth-child(3) { animation-delay: 100ms; }
+.detail-grid > *:nth-child(4) { animation-delay: 150ms; }
 </style>

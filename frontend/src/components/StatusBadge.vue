@@ -9,6 +9,8 @@ const variant = computed(() => {
     case "success":
       return "success";
     case "pending":
+    case "pending_activation":
+    case "past_due":
       return "warning";
     case "cancelled":
     case "cancelled_by_failure":
@@ -25,19 +27,40 @@ const label = computed(() => props.status.replace(/_/g, " "));
 </script>
 
 <template>
-  <span class="badge" :class="variant">{{ label }}</span>
+  <span class="badge" :class="variant">
+    <span class="badge-dot" />
+    {{ label }}
+  </span>
 </template>
 
 <style scoped>
 .badge {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   padding: 3px 10px;
   border-radius: 20px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: capitalize;
   letter-spacing: 0.02em;
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.success .badge-dot {
+  animation: pulse-glow-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
 }
 
 .success {

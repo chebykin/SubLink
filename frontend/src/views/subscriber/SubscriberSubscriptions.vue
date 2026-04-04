@@ -21,6 +21,28 @@ const subsRef = ref<HTMLElement | null>(null);
 
 useReveal(subsRef);
 
+function hasCurrentEntitlement(sub: Subscription): boolean {
+  if (!sub.paidThroughAt) return false;
+  const paidThroughMs = Date.parse(sub.paidThroughAt);
+  return !Number.isNaN(paidThroughMs) && paidThroughMs > Date.now();
+}
+
+function isChargeable(sub: Subscription): boolean {
+  return (
+    sub.status === "pending_activation" ||
+    sub.status === "active" ||
+    sub.status === "past_due"
+  );
+}
+
+function accessLabel(sub: Subscription): string {
+  if (hasCurrentEntitlement(sub) && sub.paidThroughAt) {
+    return relativeTime(sub.paidThroughAt);
+  }
+
+  return sub.status === "pending_activation" ? "Not active yet" : "Expired";
+}
+
 onMounted(async () => {
   if (!isAuthenticated.value) {
     loading.value = false;
@@ -66,7 +88,7 @@ async function handleCancel(sub: Subscription) {
   <div class="page">
     <div class="page-header">
       <h1 class="page-title">My Subscriptions</h1>
-      <p class="page-subtitle">View and manage your active subscriptions</p>
+      <p class="page-subtitle">View and manage your subscriptions</p>
     </div>
 
     <div v-if="!isAuthenticated" class="card" style="padding: 40px; text-align: center">
@@ -100,8 +122,8 @@ async function handleCancel(sub: Subscription) {
               Charges
             </router-link>
             <button
-              v-if="sub.status === 'active'"
-              class="btn btn-sm btn-danger"
+              v-if="isChargeable(sub)"
+              :class="['btn', 'btn-sm', confirmCancel === sub.id ? 'btn-danger-confirm' : 'btn-danger']"
               :disabled="cancelling === sub.id"
               @click="handleCancel(sub)"
             >
@@ -128,8 +150,12 @@ async function handleCancel(sub: Subscription) {
             <span class="sub-value">{{ sub.chargeCount }}</span>
           </div>
           <div class="sub-detail">
+            <span class="sub-label">Access</span>
+            <span class="sub-value">{{ accessLabel(sub) }}</span>
+          </div>
+          <div class="sub-detail">
             <span class="sub-label">Next Charge</span>
-            <span class="sub-value">{{ sub.status === 'active' ? relativeTime(sub.nextChargeAt) : '—' }}</span>
+            <span class="sub-value">{{ isChargeable(sub) ? relativeTime(sub.nextChargeAt) : '—' }}</span>
           </div>
           <div class="sub-detail">
             <span class="sub-label">Address</span>
@@ -199,10 +225,23 @@ async function handleCancel(sub: Subscription) {
   gap: 8px;
 }
 
+.btn-danger-confirm {
+  border-color: var(--danger) !important;
+  background: var(--danger) !important;
+  color: white !important;
+  animation: shake 0.4s ease;
+}
+
 .sub-details {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .sub-details {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .sub-detail {

@@ -34,7 +34,15 @@ onMounted(async () => {
   }
 });
 
-const activeSubs = computed(() => subscriptions.value.filter((s) => s.status === "active").length);
+function hasCurrentEntitlement(paidThroughAt: string | null): boolean {
+  if (!paidThroughAt) return false;
+  const paidThroughMs = Date.parse(paidThroughAt);
+  return !Number.isNaN(paidThroughMs) && paidThroughMs > Date.now();
+}
+
+const activeSubs = computed(() =>
+  subscriptions.value.filter((s) => hasCurrentEntitlement(s.paidThroughAt)).length,
+);
 
 const totalSpent = computed(() => {
   const total = subscriptions.value.reduce(
@@ -74,7 +82,7 @@ const totalCharges = computed(() =>
 
     <template v-else>
       <div class="stats-grid">
-        <StatCard label="Active Subscriptions" :value="activeSubs" />
+        <StatCard label="Current Access" :value="activeSubs" />
         <StatCard label="Total Spent" :value="totalSpent" suffix=" USDC" :animate="false" />
         <StatCard label="Total Charges" :value="totalCharges" />
       </div>

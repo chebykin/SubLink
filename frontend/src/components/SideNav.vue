@@ -31,13 +31,20 @@ const totalItems = computed(() => items.value.length);
     <TransitionGroup name="nav-item" tag="ul" class="nav-list">
       <li v-for="(item, i) in items" :key="item.to" :style="{ '--i': i, '--total': totalItems }">
         <router-link :to="item.to" class="nav-link" :class="{ 'nav-link--active': $route.path === item.to }">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path :d="item.icon" />
           </svg>
           <span>{{ item.label }}</span>
         </router-link>
       </li>
     </TransitionGroup>
+
+    <div class="sidenav-footer">
+      <span class="chain-badge">
+        <span class="chain-dot" />
+        Base Sepolia
+      </span>
+    </div>
   </nav>
 </template>
 
@@ -50,6 +57,8 @@ const totalItems = computed(() => items.value.length);
   border-right: 1px solid var(--border);
   backdrop-filter: blur(18px);
   transition: background 0.5s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .nav-list {
@@ -76,15 +85,28 @@ const totalItems = computed(() => items.value.length);
   position: relative;
 }
 
+.nav-icon {
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
 .nav-link:hover {
   color: var(--text-primary);
   background: var(--accent-soft);
+}
+
+.nav-link:hover .nav-icon {
+  color: var(--accent);
 }
 
 .nav-link--active {
   color: var(--accent);
   background: var(--accent-soft);
   font-weight: 600;
+}
+
+.nav-link--active .nav-icon {
+  color: var(--accent);
 }
 
 .nav-link--active::before {
@@ -110,17 +132,44 @@ const totalItems = computed(() => items.value.length);
   animation-delay: calc((var(--total) - var(--i) - 1) * 40ms);
 }
 
+.sidenav-footer {
+  margin-top: auto;
+  padding: 16px 14px 4px;
+  animation: fade-in 0.5s ease 0.5s both;
+}
+
+.chain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.chain-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
 @media (max-width: 768px) {
   .sidenav {
     width: 100%;
     min-height: auto;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    align-items: center;
   }
   .nav-list {
     flex-direction: row;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
+    flex: 1;
   }
   .nav-list li {
     scroll-snap-align: start;
@@ -129,6 +178,9 @@ const totalItems = computed(() => items.value.length);
     white-space: nowrap;
   }
   .nav-link--active::before {
+    display: none;
+  }
+  .sidenav-footer {
     display: none;
   }
 }

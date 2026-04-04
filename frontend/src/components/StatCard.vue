@@ -64,6 +64,9 @@ watch(
 <style scoped>
 .stat-card {
   padding: 20px 24px;
+  border-top: 3px solid transparent;
+  border-image: linear-gradient(90deg, var(--accent), var(--accent-hover)) 1;
+  border-image-slice: 1 0 0 0;
 }
 
 .stat-label {

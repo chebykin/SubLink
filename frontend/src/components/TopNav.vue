@@ -10,6 +10,8 @@ import { useToast } from "../composables/useToast";
 import { GITHUB_URL } from "../lib/constants";
 import { truncateAddress } from "../lib/format";
 
+defineProps<{ scrolled?: boolean }>();
+
 const { isConnected, address, signMessage } = useWallet();
 const { isAuthenticated, authKeyId, deriving, derive } = useAuth();
 const { mode } = useMode();
@@ -30,7 +32,7 @@ async function handleDerive() {
 </script>
 
 <template>
-  <header class="topnav">
+  <header class="topnav" :class="{ scrolled }">
     <div class="topnav-left">
       <router-link to="/" class="brand">
         <SublinkLogo :size="28" />
@@ -52,13 +54,19 @@ async function handleDerive() {
 
       <!-- Auth key derivation button (subscriber mode, wallet connected, not yet derived) -->
       <button v-if="showDeriveButton" class="btn btn-sm" :disabled="deriving" @click="handleDerive">
+        <svg v-if="deriving" class="spinner-inline" width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="6" stroke="var(--text-muted)" stroke-width="2" />
+          <path d="M8 2a6 6 0 016 6" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
+        </svg>
         {{ deriving ? "Signing..." : "Derive Auth Key" }}
       </button>
 
       <!-- Auth key indicator -->
-      <span v-if="isAuthenticated" class="auth-badge" :title="`Auth Key: ${authKeyId}`">
-        {{ truncateAddress(authKeyId!) }}
-      </span>
+      <Transition name="badge">
+        <span v-if="isAuthenticated" class="auth-badge" :title="`Auth Key: ${authKeyId}`">
+          {{ truncateAddress(authKeyId!) }}
+        </span>
+      </Transition>
 
       <!-- Reown AppKit wallet button -->
       <appkit-button size="sm" />
@@ -80,6 +88,11 @@ async function handleDerive() {
   position: sticky;
   top: 0;
   z-index: 50;
+  transition: box-shadow 0.3s ease;
+}
+
+.topnav.scrolled {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .topnav-left {
@@ -93,6 +106,11 @@ async function handleDerive() {
   gap: 10px;
   text-decoration: none;
   color: var(--text-primary);
+  transition: transform 0.2s var(--ease-spring);
+}
+
+.brand:hover {
+  transform: scale(1.03);
 }
 
 .brand-text {
@@ -125,12 +143,13 @@ async function handleDerive() {
   height: 36px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .icon-link:hover {
   color: var(--text-primary);
   background: var(--accent-soft);
+  transform: rotate(8deg);
 }
 
 .auth-badge {
@@ -144,6 +163,24 @@ async function handleDerive() {
   font-weight: 600;
   font-family: "SF Mono", "Fira Code", monospace;
   color: var(--accent);
+}
+
+.badge-enter-active {
+  animation: scale-in 0.3s var(--ease-spring);
+}
+
+.badge-leave-active {
+  animation: fade-in 0.15s ease reverse;
+}
+
+.spinner-inline {
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {

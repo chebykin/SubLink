@@ -17,17 +17,19 @@ function close() {
   <div class="dropdown" @mouseleave="close">
     <button class="dropdown-trigger btn-sm" @click="toggle">
       Creators
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+      <svg class="chevron" :class="{ rotated: open }" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
         <path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" />
       </svg>
     </button>
     <Transition name="dropdown">
       <div v-if="open" class="dropdown-menu">
         <a :href="CREATOR_1_URL" target="_blank" rel="noopener" class="dropdown-item" @click="close">
-          Creator 1
+          <span class="item-label">Creator 1</span>
+          <span class="item-desc">Example creator site</span>
         </a>
         <a :href="CREATOR_2_URL" target="_blank" rel="noopener" class="dropdown-item" @click="close">
-          Creator 2
+          <span class="item-label">Creator 2</span>
+          <span class="item-desc">Example creator site</span>
         </a>
       </div>
     </Transition>
@@ -60,11 +62,19 @@ function close() {
   color: var(--text-primary);
 }
 
+.chevron {
+  transition: transform 0.2s var(--ease-decel);
+}
+
+.chevron.rotated {
+  transform: rotate(180deg);
+}
+
 .dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  min-width: 140px;
+  min-width: 180px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -76,11 +86,12 @@ function close() {
 }
 
 .dropdown-item {
-  display: block;
-  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 0.8125rem;
   border-radius: var(--radius-sm);
   transition: all 0.12s ease;
 }
@@ -88,6 +99,17 @@ function close() {
 .dropdown-item:hover {
   color: var(--text-primary);
   background: var(--accent-soft);
+  transform: translateX(2px);
+}
+
+.item-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.item-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
 }
 
 .dropdown-enter-active {

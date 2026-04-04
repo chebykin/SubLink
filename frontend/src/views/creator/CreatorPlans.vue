@@ -128,8 +128,9 @@ async function handleCreate() {
         <h1 class="page-title">Plans</h1>
         <p class="page-subtitle">Create and manage subscription plans</p>
       </div>
-      <button v-if="isRegistered" class="btn btn-primary" @click="showForm = !showForm">
-        {{ showForm ? "Cancel" : "+ New Plan" }}
+      <button v-if="isRegistered" class="btn btn-primary toggle-btn" @click="showForm = !showForm">
+        <span class="toggle-icon" :class="{ open: showForm }">+</span>
+        {{ showForm ? "Cancel" : "New Plan" }}
       </button>
     </div>
 
@@ -149,7 +150,7 @@ async function handleCreate() {
     </div>
 
     <!-- Create plan form -->
-    <Transition name="route">
+    <Transition name="panel">
       <div v-if="showForm" class="card form-card">
         <h2 class="form-title">Create Plan</h2>
         <form @submit.prevent="handleCreate" class="form">
@@ -227,17 +228,19 @@ async function handleCreate() {
   margin-bottom: 28px;
 }
 
-.page-title {
-  margin: 0;
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.toggle-btn {
+  gap: 6px;
 }
 
-.page-subtitle {
-  margin: 4px 0 0;
-  color: var(--text-secondary);
-  font-size: 0.9375rem;
+.toggle-icon {
+  display: inline-block;
+  font-size: 1.1em;
+  font-weight: 700;
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.toggle-icon.open {
+  transform: rotate(45deg);
 }
 
 .form-card {
@@ -286,11 +289,18 @@ async function handleCreate() {
   font-weight: 600;
 }
 
+.plan-card:hover {
+  border-left: 3px solid var(--accent);
+}
+
 .plan-price {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .plan-interval {

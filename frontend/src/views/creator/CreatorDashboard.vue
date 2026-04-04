@@ -109,19 +109,16 @@ const totalPlans = computed(() => plans.value.length);
   font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .page-subtitle {
   margin: 4px 0 0;
   color: var(--text-secondary);
   font-size: 0.9375rem;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 40px;
 }
 
 .stat-skeleton {
@@ -131,6 +128,7 @@ const totalPlans = computed(() => plans.value.length);
 .register-prompt {
   padding: 40px;
   text-align: center;
+  animation: scale-in 0.4s var(--ease-spring);
 }
 
 .register-prompt h2 {
@@ -141,12 +139,6 @@ const totalPlans = computed(() => plans.value.length);
 .register-prompt p {
   margin: 0 0 20px;
   color: var(--text-secondary);
-}
-
-.section-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 0 0 16px;
 }
 
 .actions-grid {
@@ -171,5 +163,9 @@ const totalPlans = computed(() => plans.value.length);
 .action-card:hover {
   color: var(--accent);
   transform: translateY(-2px);
+}
+
+.action-card:hover svg {
+  color: var(--accent);
 }
 </style>

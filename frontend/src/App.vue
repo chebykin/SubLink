@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import TopNav from "./components/TopNav.vue";
 import SideNav from "./components/SideNav.vue";
 import ToastContainer from "./components/ToastContainer.vue";
+import ProgressBar from "./components/ProgressBar.vue";
 import ConnectWalletPrompt from "./components/ConnectWalletPrompt.vue";
 import { useMode } from "./composables/useMode";
 import { useWallet } from "./composables/useWallet";
@@ -11,6 +12,14 @@ import { useWallet } from "./composables/useWallet";
 const { mode } = useMode();
 const { isConnected } = useWallet();
 const router = useRouter();
+const scrolled = ref(false);
+
+function onScroll() {
+  scrolled.value = window.scrollY > 2;
+}
+
+onMounted(() => window.addEventListener("scroll", onScroll, { passive: true }));
+onUnmounted(() => window.removeEventListener("scroll", onScroll));
 
 // Navigate to mode root when mode toggles
 watch(mode, (m) => {
@@ -23,7 +32,8 @@ watch(mode, (m) => {
 </script>
 
 <template>
-  <TopNav />
+  <ProgressBar />
+  <TopNav :scrolled="scrolled" />
   <div class="layout">
     <SideNav />
     <main class="content">
@@ -50,6 +60,7 @@ watch(mode, (m) => {
   flex: 1;
   padding: 32px;
   max-width: 1200px;
+  margin: 0 auto;
   overflow-y: auto;
 }
 

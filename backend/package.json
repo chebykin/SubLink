@@ -2,10 +2,14 @@
   "name": "@sublink/backend",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@unlink-xyz/sdk": "^0.0.2-canary.0",
+    "viem": "^2.47.10"
+  },
   "scripts": {
     "dev": "bun --watch ./src/index.ts",
     "start": "bun ./src/index.ts",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "bun test"
+    "test": "TEST_DB=$(mktemp \"${TMPDIR:-/tmp}/sublink-backend-test-XXXXXX.db\") && trap 'rm -f \"$TEST_DB\" \"$TEST_DB-shm\" \"$TEST_DB-wal\"' EXIT && DB_PATH=\"$TEST_DB\" bun test --max-concurrency=1"
   }
 }

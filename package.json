@@ -13,7 +13,9 @@
     "test": "cd frontend && bun run test && cd ../backend && bun run test",
     "dev:frontend": "cd frontend && bun run dev",
     "backend": "cd backend && bun run start",
-    "backend:dev": "cd backend && bun run dev"
+    "backend:dev": "cd backend && bun run dev",
+//    "build:site-a": "cd mock-sites && bun run build:site-a",
+//    "build:site-b": "cd mock-sites && bun run build:site-b"
   },
   "devDependencies": {
     "@types/bun": "latest",

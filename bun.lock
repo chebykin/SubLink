@@ -14,6 +14,10 @@
     },
     "backend": {
       "name": "@sublink/backend",
+      "dependencies": {
+        "@unlink-xyz/sdk": "^0.0.2-canary.0",
+        "viem": "^2.47.10",
+      },
     },
     "frontend": {
       "name": "@sublink/frontend",
@@ -26,8 +30,22 @@
         "vue-tsc": "latest",
       },
     },
+    "mock-sites": {
+      "name": "@sublink/mock-sites",
+      "dependencies": {
+        "vue": "latest",
+      },
+      "devDependencies": {
+        "@vitejs/plugin-vue": "latest",
+        "vite": "latest",
+      },
+    },
     "ops": {
       "name": "@sublink/ops",
+      "dependencies": {
+        "@unlink-xyz/sdk": "^0.0.2-canary.0",
+        "viem": "^2.47.10",
+      },
     },
   },
   "packages": {
@@ -100,6 +118,8 @@
     "@sublink/backend": ["@sublink/backend@workspace:backend"],
 
     "@sublink/frontend": ["@sublink/frontend@workspace:frontend"],
+
+    "@sublink/mock-sites": ["@sublink/mock-sites@workspace:mock-sites"],
 
     "@sublink/ops": ["@sublink/ops@workspace:ops"],
 

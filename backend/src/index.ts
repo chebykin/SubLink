@@ -1,22 +1,17 @@
-export function getPayload(pathname: string) {
-  if (pathname === "/health") {
-    return { ok: true };
-  }
+import { SERVER_PORT } from "./config";
+import { initDatabase } from "./db";
+import { handleRequest } from "./router";
+import { startCronExecutor } from "./services/cron";
 
-  return {
-    name: "sublink-backend",
-    ok: true,
-    path: pathname
-  };
-}
+export function startServer(port = SERVER_PORT) {
+  initDatabase();
+  startCronExecutor();
 
-export function startServer(port = Number(Bun.env.PORT ?? 3000)) {
   return Bun.serve({
     port,
-    fetch(req) {
-      const url = new URL(req.url);
-      return Response.json(getPayload(url.pathname));
-    }
+    fetch(request) {
+      return handleRequest(request);
+    },
   });
 }
 

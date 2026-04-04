@@ -5,17 +5,20 @@
   "workspaces": [
     "frontend",
     "backend",
-    "ops"
+    "ops",
+    "mock-sites"
   ],
   "scripts": {
     "build": "cd frontend && bun run build",
     "check": "cd frontend && bun run check && cd ../backend && bun run check",
     "test": "cd frontend && bun run test && cd ../backend && bun run test",
     "dev:frontend": "cd frontend && bun run dev",
+    "dev:mock-a": "cd mock-sites && bun run dev:site-a",
+    "dev:mock-b": "cd mock-sites && bun run dev:site-b",
     "backend": "cd backend && bun run start",
     "backend:dev": "cd backend && bun run dev",
-//    "build:site-a": "cd mock-sites && bun run build:site-a",
-//    "build:site-b": "cd mock-sites && bun run build:site-b"
+    "build:site-a": "cd mock-sites && bun run build:site-a",
+    "build:site-b": "cd mock-sites && bun run build:site-b"
   },
   "devDependencies": {
     "@types/bun": "latest",

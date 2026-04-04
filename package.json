@@ -18,5 +18,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "latest"
+  },
+  "dependencies": {
+    "@unlink-xyz/sdk": "^0.0.2-canary.0"
   }
 }

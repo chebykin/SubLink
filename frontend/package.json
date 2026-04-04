@@ -10,7 +10,13 @@
     "test": "bun test"
   },
   "dependencies": {
-    "vue": "latest"
+    "@reown/appkit": "^1.8.19",
+    "@reown/appkit-adapter-wagmi": "^1.8.19",
+    "@tanstack/vue-query": "^5.96.2",
+    "@wagmi/vue": "^0.5.1",
+    "viem": "^2.47.10",
+    "vue": "latest",
+    "vue-router": "^5.0.4"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "latest",

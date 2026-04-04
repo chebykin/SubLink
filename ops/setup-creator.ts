@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { createUnlink, unlinkEvm } from "@unlink-xyz/sdk";
 
+import { createCreatorProof } from "./lib/creator-auth";
 import { requestJson } from "./lib/backend-api";
 import {
   getErrorMessage,
@@ -99,15 +100,19 @@ export async function setupCreator(params?: {
     unlinkAddress,
   });
   const createCreatorStartedAt = Date.now();
+  const proof = await createCreatorProof({
+    walletClient,
+    evmAccount: bobAccount,
+  });
   const creatorResponse = await requestJson<
     CreatorCreateResponse | { error: string; details?: unknown }
   >({
     method: "POST",
     path: "/creators",
     body: {
-      evmAddress: bobAccount.address,
       unlinkAddress,
       name: creatorName,
+      proof,
     },
   });
 

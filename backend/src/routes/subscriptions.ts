@@ -23,7 +23,7 @@ import {
   verifySubscribeProof,
 } from "../services/bearer-token";
 import { logInfo } from "../log";
-import type { Subscription } from "../types";
+import type { Subscription, SubscriptionWithPlan } from "../types";
 
 interface SubscribeBody {
   planId?: unknown;
@@ -48,6 +48,12 @@ function toSubscriptionResponse(
 ): SubscriptionResponse {
   const { accountKeysEncrypted: _sensitive, ...safe } = subscription;
   return safe;
+}
+
+function toSubscriptionWithPlanResponse(sub: SubscriptionWithPlan) {
+  const { accountKeysEncrypted: _sensitive, creator, ...safe } = sub;
+  const { apiKey: _apiKey, ...creatorPublic } = creator;
+  return { ...safe, creator: creatorPublic };
 }
 
 export async function handleSubscribe(request: Request): Promise<Response> {
@@ -190,7 +196,7 @@ export async function handleListSubscriptions(request: Request): Promise<Respons
     });
 
     return jsonResponse({
-      subscriptions: subscriptions.map(toSubscriptionResponse),
+      subscriptions: subscriptions.map(toSubscriptionWithPlanResponse),
     });
   } catch (error) {
     if (error instanceof HttpError) {

@@ -4,7 +4,7 @@ import { HttpError, errorResponse } from "./http";
 import { logRejectedHttpResponse } from "./log";
 import { handleRunCron } from "./routes/admin";
 import { handleGetCharges } from "./routes/charges";
-import { handleCreateCreator, handleGetCreator } from "./routes/creators";
+import { handleCreateCreator, handleGetCreator, handleGetCreatorByEvmAddress } from "./routes/creators";
 import { handleHealth } from "./routes/health";
 import { handleCreatePlan, handleGetPlan, handleListPlans } from "./routes/plans";
 import {
@@ -31,6 +31,7 @@ apiApp.use("*", async (c, next) => {
 apiApp.get("/health", () => handleHealth());
 
 apiApp.post("/creators", (c) => handleCreateCreator(c.req.raw));
+apiApp.get("/creators/by-evm/:evmAddress", (c) => handleGetCreatorByEvmAddress(c.req.param("evmAddress")));
 apiApp.get("/creators/:creatorId", (c) => handleGetCreator(c.req.param("creatorId")));
 
 apiApp.post("/plans", (c) => handleCreatePlan(c.req.raw));

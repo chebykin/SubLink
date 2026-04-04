@@ -96,3 +96,15 @@ export function handleGetCreator(id: string): Response {
   }
   return jsonResponse(toPublicCreator(creator));
 }
+
+export function handleGetCreatorByEvmAddress(evmAddress: string): Response {
+  if (!isAddress(evmAddress)) {
+    return errorResponse(400, "evmAddress must be a valid 0x address.");
+  }
+  const normalized = normalizeAddress(evmAddress);
+  const creator = getCreatorByEvmAddress(normalized);
+  if (!creator) {
+    return errorResponse(404, "Creator not found.");
+  }
+  return jsonResponse(toPublicCreator(creator));
+}

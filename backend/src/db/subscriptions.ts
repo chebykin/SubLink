@@ -192,13 +192,29 @@ export function listSubscriptions(filters: {
   authKeyId?: string;
   planId?: string;
   creatorId?: string;
-}): Subscription[] {
+}): SubscriptionWithPlan[] {
   const db = getDatabase();
 
   let sql = `
-    SELECT s.*
+    SELECT
+      s.*,
+      p.name AS plan_name,
+      p.description AS plan_description,
+      p.amount AS plan_amount,
+      p.interval_seconds AS plan_interval_seconds,
+      p.spending_cap AS plan_spending_cap,
+      p.active AS plan_active,
+      p.created_at AS plan_created_at,
+      c.id AS creator_id,
+      c.evm_address AS creator_evm_address,
+      c.unlink_address AS creator_unlink_address,
+      c.name AS creator_name,
+      c.webhook_url AS creator_webhook_url,
+      c.api_key AS creator_api_key,
+      c.created_at AS creator_created_at
     FROM subscriptions s
     JOIN plans p ON p.id = s.plan_id
+    JOIN creators c ON c.id = p.creator_id
     WHERE 1=1
   `;
 
@@ -221,8 +237,8 @@ export function listSubscriptions(filters: {
 
   sql += ` ORDER BY s.created_at DESC`;
 
-  const rows = db.prepare(sql).all(...args) as SubscriptionRow[];
-  return rows.map(mapSubscription);
+  const rows = db.prepare(sql).all(...args) as SubscriptionWithRelationsRow[];
+  return rows.map(mapSubscriptionWithPlan);
 }
 
 export function cancelSubscription(

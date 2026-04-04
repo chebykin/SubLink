@@ -76,7 +76,11 @@ export function formatNextChargeLabel(params: {
   status: string;
   nextChargeAt: string | null;
 }): string {
-  if (params.status !== "active") {
+  if (
+    params.status !== "pending_activation" &&
+    params.status !== "active" &&
+    params.status !== "past_due"
+  ) {
     return "Not scheduled";
   }
 
@@ -121,6 +125,8 @@ export function statusTone(status: string): "success" | "warning" | "danger" | "
     case "completed":
       return "primary";
     case "pending":
+    case "pending_activation":
+    case "past_due":
       return "warning";
     case "cancelled":
     case "cancelled_by_failure":

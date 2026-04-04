@@ -41,6 +41,7 @@ interface SubscriptionRow {
   charge_count: number;
   consecutive_failures: number;
   last_charged_at: string | null;
+  paid_through_at: string | null;
   next_charge_at: string;
   created_at: string;
   cancelled_at: string | null;
@@ -119,6 +120,7 @@ export interface ExplorerSubscriptionSummary {
   chargeCount: number;
   consecutiveFailures: number;
   lastChargedAt: string | null;
+  paidThroughAt: string | null;
   nextChargeAt: string;
   createdAt: string;
   cancelledAt: string | null;
@@ -256,6 +258,7 @@ function mapSubscription(row: SubscriptionRow): Subscription {
     chargeCount: row.charge_count,
     consecutiveFailures: row.consecutive_failures,
     lastChargedAt: row.last_charged_at,
+    paidThroughAt: row.paid_through_at,
     nextChargeAt: row.next_charge_at,
     createdAt: row.created_at,
     cancelledAt: row.cancelled_at,
@@ -325,8 +328,21 @@ function maskAccountKeys(value: string): string {
   return `[redacted ${value.length} chars]`;
 }
 
+function isChargeableStatus(status: SubscriptionStatus): boolean {
+  return status === "pending_activation" || status === "active" || status === "past_due";
+}
+
+function hasCurrentEntitlement(paidThroughAt: string | null): boolean {
+  if (!paidThroughAt) {
+    return false;
+  }
+
+  const paidThroughMs = Date.parse(paidThroughAt);
+  return !Number.isNaN(paidThroughMs) && paidThroughMs > Date.now();
+}
+
 function dueState(status: SubscriptionStatus, nextChargeAt: string): "scheduled" | "overdue" | "stopped" {
-  if (status !== "active") {
+  if (!isChargeableStatus(status)) {
     return "stopped";
   }
 
@@ -377,7 +393,7 @@ function loadGraph(): ExplorerGraph {
       planCount: creatorPlans.length,
       activePlanCount: creatorPlans.filter((plan) => plan.active).length,
       subscriptionCount: creatorSubscriptions.length,
-      activeSubscriptionCount: creatorSubscriptions.filter((subscription) => subscription.status === "active").length,
+      activeSubscriptionCount: creatorSubscriptions.filter((subscription) => hasCurrentEntitlement(subscription.paidThroughAt)).length,
       chargeCount: creatorCharges.length,
       totalCharged: sumAmounts(
         creatorCharges.filter((charge) => charge.status === "success").map((charge) => charge.amount),
@@ -397,7 +413,7 @@ function loadGraph(): ExplorerGraph {
     const planCharges = charges.filter((charge) => planSubscriptionIds.has(charge.subscriptionId));
     const nextChargeAt = maxIso(
       planSubscriptions
-        .filter((subscription) => subscription.status === "active")
+        .filter((subscription) => isChargeableStatus(subscription.status))
         .map((subscription) => subscription.nextChargeAt),
     );
 
@@ -414,7 +430,7 @@ function loadGraph(): ExplorerGraph {
       active: plan.active,
       createdAt: plan.createdAt,
       subscriptionCount: planSubscriptions.length,
-      activeSubscriptionCount: planSubscriptions.filter((subscription) => subscription.status === "active").length,
+      activeSubscriptionCount: planSubscriptions.filter((subscription) => hasCurrentEntitlement(subscription.paidThroughAt)).length,
       chargeCount: planCharges.length,
       totalCharged: sumAmounts(planCharges.filter((charge) => charge.status === "success").map((charge) => charge.amount)),
       nextChargeAt,
@@ -447,6 +463,7 @@ function loadGraph(): ExplorerGraph {
       chargeCount: subscription.chargeCount,
       consecutiveFailures: subscription.consecutiveFailures,
       lastChargedAt: subscription.lastChargedAt,
+      paidThroughAt: subscription.paidThroughAt,
       nextChargeAt: subscription.nextChargeAt,
       createdAt: subscription.createdAt,
       cancelledAt: subscription.cancelledAt,
@@ -476,7 +493,7 @@ function loadGraph(): ExplorerGraph {
           new Date(0).toISOString(),
         lastChargedAt: maxIso(groupedSubscriptions.map((subscription) => subscription.lastChargedAt)),
         subscriptionCount: groupedSubscriptions.length,
-        activeSubscriptionCount: groupedSubscriptions.filter((subscription) => subscription.status === "active").length,
+        activeSubscriptionCount: groupedSubscriptions.filter((subscription) => hasCurrentEntitlement(subscription.paidThroughAt)).length,
         creatorCount: new Set(relatedPlans.map((plan) => plan.creatorId)).size,
         planCount: new Set(relatedPlans.map((plan) => plan.id)).size,
         totalSpent: sumAmounts(groupedSubscriptions.map((subscription) => subscription.totalSpent)),
@@ -544,7 +561,8 @@ function loadGraph(): ExplorerGraph {
 
 export function getDashboardSnapshot(): ExplorerDashboardSnapshot {
   const graph = loadGraph();
-  const activeSubscriptions = graph.subscriptions.filter((subscription) => subscription.status === "active");
+  const activeSubscriptions = graph.subscriptions.filter((subscription) => hasCurrentEntitlement(subscription.paidThroughAt));
+  const chargeableSubscriptions = graph.subscriptions.filter((subscription) => isChargeableStatus(subscription.status));
 
   return {
     creatorCount: graph.creators.length,
@@ -556,13 +574,13 @@ export function getDashboardSnapshot(): ExplorerDashboardSnapshot {
     cancelledSubscriptionCount: graph.subscriptions.filter(
       (subscription) => subscription.status === "cancelled" || subscription.status === "cancelled_by_failure",
     ).length,
-    dueNowCount: activeSubscriptions.filter((subscription) => subscription.dueState === "overdue").length,
+    dueNowCount: chargeableSubscriptions.filter((subscription) => subscription.dueState === "overdue").length,
     chargeCount: graph.charges.length,
     successfulChargeCount: graph.charges.filter((charge) => charge.status === "success").length,
     failedChargeCount: graph.charges.filter((charge) => charge.status === "failed").length,
     totalCharged: sumAmounts(graph.charges.filter((charge) => charge.status === "success").map((charge) => charge.amount)),
     recentCharges: [...graph.charges].sort((a, b) => compareIsoDesc(a.createdAt, b.createdAt)).slice(0, 8),
-    upcomingSubscriptions: [...activeSubscriptions]
+    upcomingSubscriptions: [...chargeableSubscriptions]
       .sort((a, b) => compareIsoAsc(a.nextChargeAt, b.nextChargeAt))
       .slice(0, 8),
     failingSubscriptions: [...graph.subscriptions]

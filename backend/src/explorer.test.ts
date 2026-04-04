@@ -86,6 +86,7 @@ function seedExplorerFixture() {
     chargeCount: 1,
     consecutiveFailures: 0,
     lastChargedAt: createdAt,
+    paidThroughAt: new Date(Date.now() + 3600_000).toISOString(),
     nextChargeAt: new Date(Date.now() + 3600_000).toISOString(),
     createdAt,
     cancelledAt: null,

@@ -5,7 +5,11 @@ import {
   type PrivateKeyAccount,
 } from "viem/accounts";
 
-import { assertCriticalBackendEnv, MAX_CONSECUTIVE_FAILURES } from "./config";
+import {
+  assertCriticalBackendEnv,
+  MAX_CONSECUTIVE_FAILURES,
+  PENDING_ACTIVATION_RETRY_SECONDS,
+} from "./config";
 import { listChargesBySubscriptionId } from "./db/charges";
 import { createCreator } from "./db/creators";
 import { getDatabase, initDatabase } from "./db/index";
@@ -28,6 +32,7 @@ import {
 } from "./services/bearer-token";
 import {
   runChargeForSubscriptionId,
+  resetSubscriptionChargeLocksForTests,
   runCronOnce,
   setTransferExecutorForTests,
 } from "./services/cron";
@@ -62,6 +67,7 @@ beforeEach(() => {
   `);
 
   setTransferExecutorForTests(null);
+  resetSubscriptionChargeLocksForTests();
   resetAccountTransferLocksForTests();
   originalAdminSecret = Bun.env.ADMIN_SECRET;
   originalUnlinkApiKey = Bun.env.UNLINK_API_KEY;
@@ -70,6 +76,7 @@ beforeEach(() => {
 
 afterEach(() => {
   setTransferExecutorForTests(null);
+  resetSubscriptionChargeLocksForTests();
   resetAccountTransferLocksForTests();
 
   if (originalAdminSecret === undefined) {
@@ -212,6 +219,8 @@ function createSubscriptionFixture(params?: {
   spendingCap?: string;
   totalSpent?: string;
   consecutiveFailures?: number;
+  lastChargedAt?: string | null;
+  paidThroughAt?: string | null;
   nextChargeAt?: string;
   status?: SubscriptionStatus;
   chargeCount?: number;
@@ -244,7 +253,8 @@ function createSubscriptionFixture(params?: {
     totalSpent: params?.totalSpent ?? "0",
     chargeCount: params?.chargeCount ?? 0,
     consecutiveFailures: params?.consecutiveFailures ?? 0,
-    lastChargedAt: null,
+    lastChargedAt: params?.lastChargedAt ?? null,
+    paidThroughAt: params?.paidThroughAt ?? null,
     nextChargeAt: params?.nextChargeAt ?? isoOffsetSeconds(-60),
     createdAt,
     cancelledAt: null,
@@ -379,6 +389,91 @@ test.serial("POST /subscribe accepts auth proof and stores auth identity", async
   const stored = getSubscriptionById(body.subscriptionId);
   expect(stored?.authKeyId).toBe(requestBody.authKeyId);
   expect(stored?.authPublicKey).toBe(requestBody.authPublicKey);
+  expect(stored?.status).toBe("active");
+  expect(stored?.chargeCount).toBe(1);
+  expect(stored?.paidThroughAt).not.toBeNull();
+});
+
+test.serial("POST /subscribe returns 402 and leaves subscription pending when initial charge fails", async () => {
+  const { plan } = createCreatorPlanFixture();
+
+  setTransferExecutorForTests(async () => ({
+    status: "failed",
+    txId: null,
+    errorMessage: "mock transfer failure",
+  }));
+
+  const { response } = await postSubscribe({
+    planId: plan.id,
+  });
+
+  expect(response.status).toBe(402);
+  const body = (await response.json()) as {
+    error: string;
+    details: {
+      subscriptionId: string;
+      firstCharge: { status: string; errorMessage: string | null };
+    };
+  };
+  expect(body.error).toContain("Initial charge failed");
+  expect(body.details.firstCharge.status).toBe("failed");
+
+  const stored = getSubscriptionById(body.details.subscriptionId);
+  expect(stored?.status).toBe("pending_activation");
+  expect(stored?.paidThroughAt).toBeNull();
+  expect(stored?.chargeCount).toBe(0);
+  expect(stored?.nextChargeAt).not.toBeNull();
+  if (stored?.nextChargeAt) {
+    const retryDelaySeconds = Math.round(
+      (Date.parse(stored.nextChargeAt) - Date.now()) / 1_000,
+    );
+    expect(retryDelaySeconds).toBeLessThanOrEqual(PENDING_ACTIVATION_RETRY_SECONDS + 1);
+  }
+});
+
+test.serial("POST /subscribe retries an existing pending activation row instead of returning 409", async () => {
+  const { plan } = createCreatorPlanFixture();
+
+  setTransferExecutorForTests(async () => ({
+    status: "failed",
+    txId: null,
+    errorMessage: "mock transfer failure",
+  }));
+
+  const first = await postSubscribe({ planId: plan.id });
+  expect(first.response.status).toBe(402);
+  const firstBody = (await first.response.json()) as {
+    details: { subscriptionId: string };
+  };
+
+  setTransferExecutorForTests(async () => ({
+    status: "success",
+    txId: "mock-retry-success",
+    errorMessage: null,
+  }));
+
+  const second = await postSubscribe({
+    planId: plan.id,
+    unlinkAddress: first.requestBody.unlinkAddress,
+    authKeyId: first.requestBody.authKeyId,
+    authPublicKey: first.requestBody.authPublicKey,
+    authProof: first.requestBody.authProof,
+    accountKeysJson: first.requestBody.accountKeysJson,
+  });
+
+  expect(second.response.status).toBe(201);
+  const secondBody = (await second.response.json()) as {
+    subscriptionId: string;
+    firstCharge: { txId: string | null; status: string };
+  };
+  expect(secondBody.subscriptionId).toBe(firstBody.details.subscriptionId);
+  expect(secondBody.firstCharge.txId).toBe("mock-retry-success");
+  expect(secondBody.firstCharge.status).toBe("success");
+
+  const stored = getSubscriptionById(secondBody.subscriptionId);
+  expect(stored?.status).toBe("active");
+  expect(stored?.chargeCount).toBe(1);
+  expect(stored?.paidThroughAt).not.toBeNull();
 });
 
 test.serial("POST /subscribe rejects authProof signed by a different auth key", async () => {
@@ -486,6 +581,9 @@ test.serial("spending cap completion: subscription becomes completed after succe
     amount: "200",
     spendingCap: "1000",
     totalSpent: "900",
+    chargeCount: 1,
+    lastChargedAt: isoOffsetSeconds(-120),
+    paidThroughAt: isoOffsetSeconds(-10),
     nextChargeAt: isoOffsetSeconds(-10),
   });
 
@@ -502,9 +600,34 @@ test.serial("spending cap completion: subscription becomes completed after succe
   expect(result.subscription.cancelledAt).not.toBeNull();
 });
 
+test.serial("failed renewal moves subscription to past_due without extending entitlement", async () => {
+  const paidThroughAt = isoOffsetSeconds(-10);
+  const fixture = createSubscriptionFixture({
+    chargeCount: 1,
+    lastChargedAt: isoOffsetSeconds(-120),
+    paidThroughAt,
+    nextChargeAt: paidThroughAt,
+  });
+
+  setTransferExecutorForTests(async () => ({
+    status: "failed",
+    txId: null,
+    errorMessage: "mock renewal failure",
+  }));
+
+  const result = await runChargeForSubscriptionId(fixture.subscription.id);
+  expect(result.outcome).toBe("failed");
+  expect(result.subscription.status).toBe("past_due");
+  expect(result.subscription.paidThroughAt).toBe(paidThroughAt);
+  expect(result.subscription.chargeCount).toBe(1);
+});
+
 test.serial("3-failure auto-cancel: subscription is cancelled_by_failure on MAX-th failed charge", async () => {
   const fixture = createSubscriptionFixture({
     consecutiveFailures: MAX_CONSECUTIVE_FAILURES - 1,
+    chargeCount: 1,
+    lastChargedAt: isoOffsetSeconds(-120),
+    paidThroughAt: isoOffsetSeconds(-10),
     nextChargeAt: isoOffsetSeconds(-10),
   });
 
@@ -612,6 +735,10 @@ test.serial("403 on GET /charges/:subscriptionId with wrong subscriber bearer to
 test.serial("GET /verify returns valid response without subscriber wallet address", async () => {
   const fixture = createSubscriptionFixture({
     authAccount: ALICE_AUTH_ACCOUNT,
+    chargeCount: 1,
+    lastChargedAt: isoOffsetSeconds(-120),
+    paidThroughAt: isoOffsetSeconds(3_600),
+    nextChargeAt: isoOffsetSeconds(3_600),
   });
   const token = await createBearerForAccount(
     ALICE_AUTH_ACCOUNT,
@@ -634,6 +761,63 @@ test.serial("GET /verify returns valid response without subscriber wallet addres
   expect(body.subscriptionId).toBe(fixture.subscription.id);
   expect(body.planId).toBe(fixture.plan.id);
   expect("subscriberEvmAddress" in body).toBe(false);
+});
+
+test.serial("GET /verify denies subscriptions without a successful charge entitlement", async () => {
+  const fixture = createSubscriptionFixture({
+    authAccount: ALICE_AUTH_ACCOUNT,
+    status: "pending_activation",
+    chargeCount: 0,
+    paidThroughAt: null,
+  });
+  const token = await createBearerForAccount(
+    ALICE_AUTH_ACCOUNT,
+    fixture.subscription.id,
+  );
+
+  const response = await handleRequest(
+    new Request(`http://localhost/verify/${fixture.plan.id}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-api-key": fixture.creator.apiKey,
+      },
+    }),
+  );
+
+  expect(response.status).toBe(402);
+  const body = (await response.json()) as { valid: boolean; error: string };
+  expect(body.valid).toBe(false);
+  expect(body.error).toBe("Subscription required");
+});
+
+test.serial("GET /verify still allows cancelled subscriptions until paidThroughAt", async () => {
+  const fixture = createSubscriptionFixture({
+    authAccount: ALICE_AUTH_ACCOUNT,
+    status: "cancelled",
+    chargeCount: 1,
+    lastChargedAt: isoOffsetSeconds(-120),
+    paidThroughAt: isoOffsetSeconds(3_600),
+    nextChargeAt: isoOffsetSeconds(3_600),
+  });
+  const token = await createBearerForAccount(
+    ALICE_AUTH_ACCOUNT,
+    fixture.subscription.id,
+  );
+
+  const response = await handleRequest(
+    new Request(`http://localhost/verify/${fixture.plan.id}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-api-key": fixture.creator.apiKey,
+      },
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { valid: boolean };
+  expect(body.valid).toBe(true);
 });
 
 test.serial("403 on /admin/run-cron without admin key", async () => {

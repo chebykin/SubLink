@@ -11,6 +11,12 @@ interface TableInfoRow {
   name: string;
 }
 
+interface SubscriptionEntitlementBackfillRow {
+  id: string;
+  last_charged_at: string;
+  interval_seconds: number;
+}
+
 function hasTable(db: Database, tableName: string): boolean {
   const row = db
     .prepare(
@@ -25,15 +31,36 @@ function hasTable(db: Database, tableName: string): boolean {
   return row !== null;
 }
 
+function getTableColumns(db: Database, tableName: string): Set<string> {
+  if (!hasTable(db, tableName)) {
+    return new Set();
+  }
+
+  const rows = db
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+  return new Set(rows.map((row) => row.name));
+}
+
+function hasColumn(db: Database, tableName: string, columnName: string): boolean {
+  return getTableColumns(db, tableName).has(columnName);
+}
+
+function addSecondsToIso(baseIso: string, seconds: number): string {
+  const timestamp = Date.parse(baseIso);
+  if (Number.isNaN(timestamp)) {
+    throw new Error(`Invalid ISO timestamp: ${baseIso}`);
+  }
+
+  return new Date(timestamp + seconds * 1_000).toISOString();
+}
+
 function isRev3SubscriptionsSchema(db: Database): boolean {
   if (!hasTable(db, "subscriptions")) {
     return true;
   }
 
-  const rows = db
-    .prepare(`PRAGMA table_info(subscriptions)`)
-    .all() as Array<{ name: string }>;
-  const columnNames = new Set(rows.map((row) => row.name));
+  const columnNames = getTableColumns(db, "subscriptions");
 
   return (
     columnNames.has("auth_key_id") &&
@@ -49,6 +76,46 @@ function resetSchema(db: Database): void {
     DROP TABLE IF EXISTS plans;
     DROP TABLE IF EXISTS creators;
   `);
+}
+
+function ensureSubscriptionColumns(db: Database): void {
+  if (!hasTable(db, "subscriptions")) {
+    return;
+  }
+
+  if (!hasColumn(db, "subscriptions", "paid_through_at")) {
+    db.exec(`
+      ALTER TABLE subscriptions
+      ADD COLUMN paid_through_at TEXT
+    `);
+  }
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        s.id,
+        s.last_charged_at,
+        p.interval_seconds
+      FROM subscriptions s
+      JOIN plans p ON p.id = s.plan_id
+      WHERE
+        s.paid_through_at IS NULL
+        AND s.last_charged_at IS NOT NULL
+        AND s.charge_count > 0
+      `,
+    )
+    .all() as SubscriptionEntitlementBackfillRow[];
+
+  const update = db.prepare(`
+    UPDATE subscriptions
+    SET paid_through_at = ?
+    WHERE id = ?
+  `);
+
+  for (const row of rows) {
+    update.run(addSecondsToIso(row.last_charged_at, row.interval_seconds), row.id);
+  }
 }
 
 function ensureSchema(db: Database): void {
@@ -95,6 +162,7 @@ function ensureSchema(db: Database): void {
       charge_count INTEGER NOT NULL,
       consecutive_failures INTEGER NOT NULL,
       last_charged_at TEXT,
+      paid_through_at TEXT,
       next_charge_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       cancelled_at TEXT,
@@ -119,6 +187,8 @@ function ensureSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_subscriptions_status_due ON subscriptions(status, next_charge_at);
     CREATE INDEX IF NOT EXISTS idx_charges_subscription ON charges(subscription_id, created_at);
   `);
+
+  ensureSubscriptionColumns(db);
 }
 
 export function initDatabase(): Database {

@@ -19,6 +19,7 @@ interface SubscriptionRow {
   charge_count: number;
   consecutive_failures: number;
   last_charged_at: string | null;
+  paid_through_at: string | null;
   next_charge_at: string;
   created_at: string;
   cancelled_at: string | null;
@@ -55,6 +56,7 @@ function mapSubscription(row: SubscriptionRow): Subscription {
     chargeCount: row.charge_count,
     consecutiveFailures: row.consecutive_failures,
     lastChargedAt: row.last_charged_at,
+    paidThroughAt: row.paid_through_at,
     nextChargeAt: row.next_charge_at,
     createdAt: row.created_at,
     cancelledAt: row.cancelled_at,
@@ -107,6 +109,7 @@ export function createSubscription(params: {
   chargeCount: number;
   consecutiveFailures: number;
   lastChargedAt: string | null;
+  paidThroughAt: string | null;
   nextChargeAt: string;
   createdAt: string;
   cancelledAt: string | null;
@@ -118,8 +121,8 @@ export function createSubscription(params: {
       INSERT INTO subscriptions (
         id, plan_id, auth_key_id, auth_public_key, unlink_address, account_keys_encrypted,
         status, total_spent, charge_count, consecutive_failures,
-        last_charged_at, next_charge_at, created_at, cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_charged_at, paid_through_at, next_charge_at, created_at, cancelled_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     params.id,
@@ -133,6 +136,7 @@ export function createSubscription(params: {
     params.chargeCount,
     params.consecutiveFailures,
     params.lastChargedAt,
+    params.paidThroughAt,
     params.nextChargeAt,
     params.createdAt,
     params.cancelledAt,
@@ -151,6 +155,25 @@ export function getSubscriptionById(id: string): Subscription | null {
   const row = db
     .prepare(`SELECT * FROM subscriptions WHERE id = ? LIMIT 1`)
     .get(id) as SubscriptionRow | null;
+
+  return row ? mapSubscription(row) : null;
+}
+
+export function getSubscriptionByPlanAndAuthKeyId(
+  planId: string,
+  authKeyId: string,
+): Subscription | null {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `
+      SELECT *
+      FROM subscriptions
+      WHERE plan_id = ? AND auth_key_id = ?
+      LIMIT 1
+      `,
+    )
+    .get(planId, authKeyId) as SubscriptionRow | null;
 
   return row ? mapSubscription(row) : null;
 }
@@ -265,6 +288,7 @@ export function updateSubscriptionBillingState(params: {
   chargeCount: number;
   consecutiveFailures: number;
   lastChargedAt: string | null;
+  paidThroughAt: string | null;
   nextChargeAt: string;
   cancelledAt: string | null;
 }): Subscription | null {
@@ -279,6 +303,7 @@ export function updateSubscriptionBillingState(params: {
         charge_count = ?,
         consecutive_failures = ?,
         last_charged_at = ?,
+        paid_through_at = ?,
         next_charge_at = ?,
         cancelled_at = ?
       WHERE id = ?
@@ -289,6 +314,7 @@ export function updateSubscriptionBillingState(params: {
     params.chargeCount,
     params.consecutiveFailures,
     params.lastChargedAt,
+    params.paidThroughAt,
     params.nextChargeAt,
     params.cancelledAt,
     params.id,
@@ -328,7 +354,7 @@ export function getDueSubscriptions(params: {
       JOIN plans p ON p.id = s.plan_id
       JOIN creators c ON c.id = p.creator_id
       WHERE
-        s.status = 'active'
+        s.status IN ('pending_activation', 'active', 'past_due')
         AND s.next_charge_at <= ?
         AND s.consecutive_failures < ?
       ORDER BY s.next_charge_at ASC

@@ -6,6 +6,7 @@ import {
   cancelSubscription,
   createSubscription,
   getSubscriptionById,
+  getSubscriptionByPlanAndAuthKeyId,
   listSubscriptions,
 } from "../db/subscriptions";
 import {
@@ -17,6 +18,7 @@ import {
   requireString,
 } from "../http";
 import { processSubscriptionCharge } from "../services/cron";
+import { SubscriptionInactiveError } from "../services/cron";
 import { deserializeAccountKeys } from "../services/account-keys";
 import {
   requireSubscriberAuth,
@@ -54,6 +56,44 @@ function toSubscriptionWithPlanResponse(sub: SubscriptionWithPlan) {
   const { accountKeysEncrypted: _sensitive, creator, ...safe } = sub;
   const { apiKey: _apiKey, ...creatorPublic } = creator;
   return { ...safe, creator: creatorPublic };
+}
+
+async function attemptActivationCharge(params: {
+  subscription: SubscriptionWithPlan;
+  source: "subscribe_initial" | "subscribe_retry";
+}): Promise<Response> {
+  const charge = await processSubscriptionCharge({
+    subscription: params.subscription,
+    chargedAt: nowIso(),
+    source: params.source,
+    allowedStatuses: ["pending_activation"],
+  });
+
+  if (charge.outcome !== "success") {
+    return errorResponse(
+      402,
+      "Initial charge failed. Fund the dedicated account and wait for the next retry.",
+      {
+        subscriptionId: params.subscription.id,
+        firstCharge: {
+          txId: charge.charge.unlinkTxId,
+          status: charge.charge.status,
+          errorMessage: charge.charge.errorMessage,
+        },
+      },
+    );
+  }
+
+  return jsonResponse(
+    {
+      subscriptionId: params.subscription.id,
+      firstCharge: {
+        txId: charge.charge.unlinkTxId,
+        status: charge.charge.status,
+      },
+    },
+    201,
+  );
 }
 
 export async function handleSubscribe(request: Request): Promise<Response> {
@@ -113,10 +153,50 @@ export async function handleSubscribe(request: Request): Promise<Response> {
       return errorResponse(404, "Creator not found for plan.");
     }
 
+    const existing = getSubscriptionByPlanAndAuthKeyId(planId, authKeyId);
+    if (existing) {
+      if (
+        existing.status === "pending_activation" &&
+        existing.chargeCount === 0 &&
+        existing.paidThroughAt === null
+      ) {
+        if (
+          existing.unlinkAddress !== unlinkAddress ||
+          existing.authPublicKey !== authPublicKey
+        ) {
+          return errorResponse(
+            409,
+            "Subscription setup is already pending with different activation details.",
+          );
+        }
+
+        try {
+          return await attemptActivationCharge({
+            subscription: {
+              ...existing,
+              plan,
+              creator,
+            },
+            source: "subscribe_retry",
+          });
+        } catch (error) {
+          if (error instanceof SubscriptionInactiveError) {
+            return errorResponse(
+              409,
+              "Subscription activation was already processed. Refresh subscription state.",
+            );
+          }
+          throw error;
+        }
+      }
+
+      return errorResponse(
+        409,
+        "Subscription already exists for this auth key and plan.",
+      );
+    }
+
     const createdAt = nowIso();
-    const initialNextChargeAt = new Date(
-      Date.parse(createdAt) + plan.intervalSeconds * 1_000,
-    ).toISOString();
     const subscription = createSubscription({
       id: crypto.randomUUID(),
       planId,
@@ -124,12 +204,13 @@ export async function handleSubscribe(request: Request): Promise<Response> {
       authPublicKey,
       unlinkAddress,
       accountKeysEncrypted: accountKeysJson,
-      status: "active",
+      status: "pending_activation",
       totalSpent: "0",
       chargeCount: 0,
       consecutiveFailures: 0,
       lastChargedAt: null,
-      nextChargeAt: initialNextChargeAt,
+      paidThroughAt: null,
+      nextChargeAt: createdAt,
       createdAt,
       cancelledAt: null,
     });
@@ -140,29 +221,18 @@ export async function handleSubscribe(request: Request): Promise<Response> {
       authKeyId: subscription.authKeyId,
       creatorId: creator.id,
       unlinkAddress: subscription.unlinkAddress,
+      paidThroughAt: subscription.paidThroughAt,
       nextChargeAt: subscription.nextChargeAt,
     });
 
-    const firstCharge = await processSubscriptionCharge({
+    return await attemptActivationCharge({
       subscription: {
         ...subscription,
         plan,
         creator,
       },
-      chargedAt: nowIso(),
       source: "subscribe_initial",
     });
-
-    return jsonResponse(
-      {
-        subscriptionId: subscription.id,
-        firstCharge: {
-          txId: firstCharge.charge.unlinkTxId,
-          status: firstCharge.charge.status,
-        },
-      },
-      201,
-    );
   } catch (error) {
     if (error instanceof HttpError) {
       return errorResponse(error.status, error.message, error.details);
@@ -225,8 +295,15 @@ export async function handleCancelSubscription(
       return errorResponse(403, "Forbidden.");
     }
 
-    if (subscription.status !== "active") {
-      return errorResponse(409, "Only active subscriptions can be cancelled.");
+    if (
+      subscription.status !== "active" &&
+      subscription.status !== "past_due" &&
+      subscription.status !== "pending_activation"
+    ) {
+      return errorResponse(
+        409,
+        "Only chargeable subscriptions can be cancelled.",
+      );
     }
 
     const cancelled = cancelSubscription(subscriptionId, "cancelled", nowIso());

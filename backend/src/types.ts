@@ -1,5 +1,7 @@
 export type SubscriptionStatus =
+  | "pending_activation"
   | "active"
+  | "past_due"
   | "cancelled"
   | "cancelled_by_failure"
   | "completed";
@@ -59,6 +61,7 @@ export interface Subscription {
   chargeCount: number;
   consecutiveFailures: number;
   lastChargedAt: string | null;
+  paidThroughAt: string | null;
   nextChargeAt: string;
   createdAt: string;
   cancelledAt: string | null;

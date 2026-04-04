@@ -1,6 +1,7 @@
 import {
   CRON_INTERVAL_MS,
   MAX_CONSECUTIVE_FAILURES,
+  PENDING_ACTIVATION_RETRY_SECONDS,
   USDC_ADDRESS,
 } from "../config";
 import { createCharge, updateChargeStatus } from "../db/charges";
@@ -36,20 +37,51 @@ export interface CronRunSummary {
   skippedBecauseRunning: boolean;
 }
 
-class SubscriptionInactiveError extends Error {
+export class SubscriptionInactiveError extends Error {
   constructor(subscriptionId: string) {
-    super(`Subscription ${subscriptionId} is no longer active.`);
+    super(`Subscription ${subscriptionId} is no longer chargeable.`);
   }
 }
 
 let cronMutex = false;
 let cronTimer: ReturnType<typeof setInterval> | null = null;
 let transferExecutor = executeTransferFromSerializedKeys;
+const subscriptionChargeLocks = new Map<string, Promise<void>>();
 
 export function setTransferExecutorForTests(
   executor: typeof executeTransferFromSerializedKeys | null,
 ): void {
   transferExecutor = executor ?? executeTransferFromSerializedKeys;
+}
+
+export function resetSubscriptionChargeLocksForTests(): void {
+  subscriptionChargeLocks.clear();
+}
+
+async function withSubscriptionChargeLock<T>(
+  subscriptionId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = subscriptionChargeLocks.get(subscriptionId);
+  let releaseLock!: () => void;
+  const lock = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+
+  subscriptionChargeLocks.set(subscriptionId, lock);
+
+  if (previous) {
+    await previous.catch(() => undefined);
+  }
+
+  try {
+    return await task();
+  } finally {
+    releaseLock();
+    if (subscriptionChargeLocks.get(subscriptionId) === lock) {
+      subscriptionChargeLocks.delete(subscriptionId);
+    }
+  }
 }
 
 function computeNextStatusAfterSuccess(params: {
@@ -71,154 +103,199 @@ function computeNextStatusAfterSuccess(params: {
   };
 }
 
+function isChargeableStatus(status: SubscriptionStatus): boolean {
+  return (
+    status === "pending_activation" ||
+    status === "active" ||
+    status === "past_due"
+  );
+}
+
+function computePaidThroughAt(subscription: SubscriptionWithPlan, chargedAt: string): string {
+  const paidThroughAt = subscription.paidThroughAt;
+  if (!paidThroughAt) {
+    return addSecondsToIso(chargedAt, subscription.plan.intervalSeconds);
+  }
+
+  const entitlementStart =
+    Date.parse(paidThroughAt) > Date.parse(chargedAt) ? paidThroughAt : chargedAt;
+  return addSecondsToIso(entitlementStart, subscription.plan.intervalSeconds);
+}
+
 function nextChargeAt(subscription: SubscriptionWithPlan, chargedAt: string): string {
   return addSecondsToIso(chargedAt, subscription.plan.intervalSeconds);
+}
+
+function nextRetryAt(subscription: SubscriptionWithPlan, chargedAt: string): string {
+  if (subscription.paidThroughAt === null) {
+    return addSecondsToIso(chargedAt, PENDING_ACTIVATION_RETRY_SECONDS);
+  }
+
+  return nextChargeAt(subscription, chargedAt);
 }
 
 export async function processSubscriptionCharge(params: {
   subscription: SubscriptionWithPlan;
   chargedAt?: string;
-  source?: "subscribe_initial" | "cron" | "manual";
+  source?: "subscribe_initial" | "subscribe_retry" | "cron" | "manual";
+  allowedStatuses?: SubscriptionStatus[];
 }): Promise<ChargeProcessingResult> {
-  const chargedAt = params.chargedAt ?? nowIso();
-  const source = params.source ?? "manual";
-  const freshSubscription = getSubscriptionWithPlanById(params.subscription.id);
-  if (!freshSubscription || freshSubscription.status !== "active") {
-    throw new SubscriptionInactiveError(params.subscription.id);
-  }
-  const subscription = freshSubscription;
+  return withSubscriptionChargeLock(params.subscription.id, async () => {
+    const chargedAt = params.chargedAt ?? nowIso();
+    const source = params.source ?? "manual";
+    const allowedStatuses = params.allowedStatuses ?? [
+      "pending_activation",
+      "active",
+      "past_due",
+    ];
+    const freshSubscription = getSubscriptionWithPlanById(params.subscription.id);
+    if (
+      !freshSubscription ||
+      !isChargeableStatus(freshSubscription.status) ||
+      !allowedStatuses.includes(freshSubscription.status)
+    ) {
+      throw new SubscriptionInactiveError(params.subscription.id);
+    }
+    const subscription = freshSubscription;
 
-  const pendingCharge = createCharge({
-    id: crypto.randomUUID(),
-    subscriptionId: subscription.id,
-    amount: subscription.plan.amount,
-    status: "pending",
-    unlinkTxId: null,
-    errorMessage: null,
-    createdAt: chargedAt,
-    completedAt: null,
-  });
-
-  const transfer = await transferExecutor({
-    accountKeysJson: subscription.accountKeysEncrypted,
-    recipientAddress: subscription.creator.unlinkAddress,
-    amount: subscription.plan.amount,
-    token: USDC_ADDRESS,
-  });
-
-  if (transfer.status === "success") {
-    const totalSpent = (
-      BigInt(subscription.totalSpent) + BigInt(subscription.plan.amount)
-    ).toString();
-
-    const statusAfterSuccess = computeNextStatusAfterSuccess({
-      subscription,
-      newTotalSpent: totalSpent,
-      chargedAt,
+    const pendingCharge = createCharge({
+      id: crypto.randomUUID(),
+      subscriptionId: subscription.id,
+      amount: subscription.plan.amount,
+      status: "pending",
+      unlinkTxId: null,
+      errorMessage: null,
+      createdAt: chargedAt,
+      completedAt: null,
     });
+
+    const transfer = await transferExecutor({
+      accountKeysJson: subscription.accountKeysEncrypted,
+      recipientAddress: subscription.creator.unlinkAddress,
+      amount: subscription.plan.amount,
+      token: USDC_ADDRESS,
+    });
+
+    if (transfer.status === "success") {
+      const totalSpent = (
+        BigInt(subscription.totalSpent) + BigInt(subscription.plan.amount)
+      ).toString();
+      const paidThroughAt = computePaidThroughAt(subscription, chargedAt);
+
+      const statusAfterSuccess = computeNextStatusAfterSuccess({
+        subscription,
+        newTotalSpent: totalSpent,
+        chargedAt,
+      });
+
+      const updatedSubscription = applySubscriptionBillingState({
+        id: subscription.id,
+        status: statusAfterSuccess.status,
+        totalSpent,
+        chargeCount: subscription.chargeCount + 1,
+        consecutiveFailures: 0,
+        lastChargedAt: chargedAt,
+        paidThroughAt,
+        nextChargeAt: paidThroughAt,
+        cancelledAt: statusAfterSuccess.cancelledAt,
+      });
+
+      if (!updatedSubscription) {
+        throw new Error(
+          `Failed to update subscription billing state for ${subscription.id}.`,
+        );
+      }
+
+      const completedCharge = updateChargeStatus({
+        id: pendingCharge.id,
+        status: "success",
+        unlinkTxId: transfer.txId,
+        errorMessage: null,
+        completedAt: chargedAt,
+      });
+
+      if (!completedCharge) {
+        throw new Error(`Failed to update charge ${pendingCharge.id} as success.`);
+      }
+
+      logInfo("charge.succeeded", {
+        source,
+        chargeId: completedCharge.id,
+        subscriptionId: subscription.id,
+        planId: subscription.planId,
+        creatorId: subscription.creator.id,
+        amount: subscription.plan.amount,
+        unlinkTxId: transfer.txId,
+        totalSpent,
+        chargeCount: updatedSubscription.chargeCount,
+        subscriptionStatus: updatedSubscription.status,
+        chargedAt,
+      });
+
+      return {
+        charge: completedCharge,
+        subscription: updatedSubscription,
+        outcome: "success",
+      };
+    }
+
+    const failures = subscription.consecutiveFailures + 1;
+    const shouldCancelByFailure = failures >= MAX_CONSECUTIVE_FAILURES;
+    const hasEntitlement = subscription.paidThroughAt !== null;
+    const statusAfterFailure: SubscriptionStatus = shouldCancelByFailure
+      ? "cancelled_by_failure"
+      : hasEntitlement
+        ? "past_due"
+        : "pending_activation";
 
     const updatedSubscription = applySubscriptionBillingState({
       id: subscription.id,
-      status: statusAfterSuccess.status,
-      totalSpent,
-      chargeCount: subscription.chargeCount + 1,
-      consecutiveFailures: 0,
-      lastChargedAt: chargedAt,
-      nextChargeAt:
-        statusAfterSuccess.status === "completed"
-          ? chargedAt
-          : nextChargeAt(subscription, chargedAt),
-      cancelledAt: statusAfterSuccess.cancelledAt,
+      status: statusAfterFailure,
+      totalSpent: subscription.totalSpent,
+      chargeCount: subscription.chargeCount,
+      consecutiveFailures: failures,
+      lastChargedAt: subscription.lastChargedAt,
+      paidThroughAt: subscription.paidThroughAt,
+      nextChargeAt: nextRetryAt(subscription, chargedAt),
+      cancelledAt: shouldCancelByFailure ? chargedAt : subscription.cancelledAt,
     });
 
     if (!updatedSubscription) {
-      throw new Error(
-        `Failed to update subscription billing state for ${subscription.id}.`,
-      );
+      throw new Error(`Failed to update failed billing state for ${subscription.id}.`);
     }
 
-    const completedCharge = updateChargeStatus({
+    const failedCharge = updateChargeStatus({
       id: pendingCharge.id,
-      status: "success",
+      status: "failed",
       unlinkTxId: transfer.txId,
-      errorMessage: null,
+      errorMessage: transfer.errorMessage,
       completedAt: chargedAt,
     });
 
-    if (!completedCharge) {
-      throw new Error(`Failed to update charge ${pendingCharge.id} as success.`);
+    if (!failedCharge) {
+      throw new Error(`Failed to update charge ${pendingCharge.id} as failed.`);
     }
 
-    logInfo("charge.succeeded", {
+    logWarn("charge.failed", {
       source,
-      chargeId: completedCharge.id,
+      chargeId: failedCharge.id,
       subscriptionId: subscription.id,
       planId: subscription.planId,
       creatorId: subscription.creator.id,
       amount: subscription.plan.amount,
       unlinkTxId: transfer.txId,
-      totalSpent,
-      chargeCount: updatedSubscription.chargeCount,
+      errorMessage: transfer.errorMessage,
+      consecutiveFailures: updatedSubscription.consecutiveFailures,
       subscriptionStatus: updatedSubscription.status,
       chargedAt,
     });
 
     return {
-      charge: completedCharge,
+      charge: failedCharge,
       subscription: updatedSubscription,
-      outcome: "success",
+      outcome: "failed",
     };
-  }
-
-  const failures = subscription.consecutiveFailures + 1;
-  const shouldCancelByFailure = failures >= MAX_CONSECUTIVE_FAILURES;
-
-  const updatedSubscription = applySubscriptionBillingState({
-    id: subscription.id,
-    status: shouldCancelByFailure ? "cancelled_by_failure" : "active",
-    totalSpent: subscription.totalSpent,
-    chargeCount: subscription.chargeCount,
-    consecutiveFailures: failures,
-    lastChargedAt: subscription.lastChargedAt,
-    nextChargeAt: nextChargeAt(subscription, chargedAt),
-    cancelledAt: shouldCancelByFailure ? chargedAt : subscription.cancelledAt,
   });
-
-  if (!updatedSubscription) {
-    throw new Error(`Failed to update failed billing state for ${subscription.id}.`);
-  }
-
-  const failedCharge = updateChargeStatus({
-    id: pendingCharge.id,
-    status: "failed",
-    unlinkTxId: transfer.txId,
-    errorMessage: transfer.errorMessage,
-    completedAt: chargedAt,
-  });
-
-  if (!failedCharge) {
-    throw new Error(`Failed to update charge ${pendingCharge.id} as failed.`);
-  }
-
-  logWarn("charge.failed", {
-    source,
-    chargeId: failedCharge.id,
-    subscriptionId: subscription.id,
-    planId: subscription.planId,
-    creatorId: subscription.creator.id,
-    amount: subscription.plan.amount,
-    unlinkTxId: transfer.txId,
-    errorMessage: transfer.errorMessage,
-    consecutiveFailures: updatedSubscription.consecutiveFailures,
-    subscriptionStatus: updatedSubscription.status,
-    chargedAt,
-  });
-
-  return {
-    charge: failedCharge,
-    subscription: updatedSubscription,
-    outcome: "failed",
-  };
 }
 
 export async function runCronOnce(): Promise<CronRunSummary> {

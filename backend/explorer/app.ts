@@ -36,7 +36,9 @@ import { escapeHtml } from "./format";
 
 const SUBSCRIPTION_STATUSES = [
   "all",
+  "pending_activation",
   "active",
+  "past_due",
   "cancelled",
   "cancelled_by_failure",
   "completed",

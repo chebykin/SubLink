@@ -38,6 +38,11 @@ export const BEARER_TOKEN_CLOCK_SKEW_SECONDS = readNumberEnv(
   30,
 );
 
+export const PENDING_ACTIVATION_RETRY_SECONDS = readNumberEnv(
+  "PENDING_ACTIVATION_RETRY_SECONDS",
+  300,
+);
+
 const defaultDbPath = new URL("../data/sublink.db", import.meta.url).pathname;
 export const DB_PATH = readOptionalEnv("DB_PATH") ?? defaultDbPath;
 

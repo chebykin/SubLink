@@ -6,6 +6,19 @@ import { errorResponse, jsonResponse } from "../http";
 import { verifyBearerToken } from "../services/bearer-token";
 import type { VerifyAccessDenied } from "../types";
 
+function hasCurrentEntitlement(paidThroughAt: string | null, nowMs: number): boolean {
+  if (!paidThroughAt) {
+    return false;
+  }
+
+  const paidThroughMs = Date.parse(paidThroughAt);
+  if (Number.isNaN(paidThroughMs)) {
+    return false;
+  }
+
+  return paidThroughMs > nowMs;
+}
+
 function discoveryResponse(params: {
   planId: string;
   planName: string;
@@ -67,6 +80,7 @@ export async function handleVerify(planId: string, request: Request): Promise<Re
 
   try {
     const verified = await verifyBearerToken(token);
+    const nowMs = Date.now();
 
     const subscription = getSubscriptionWithPlanById(verified.payload.subscriptionId);
     if (!subscription) {
@@ -79,9 +93,9 @@ export async function handleVerify(planId: string, request: Request): Promise<Re
     }
 
     if (
-      subscription.status !== "active" ||
       subscription.planId !== planId ||
-      subscription.authKeyId !== verified.authKeyId
+      subscription.authKeyId !== verified.authKeyId ||
+      !hasCurrentEntitlement(subscription.paidThroughAt, nowMs)
     ) {
       return discoveryResponse({
         planId,

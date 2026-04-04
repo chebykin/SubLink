@@ -1,5 +1,9 @@
 {
   "name": "@sublink/ops",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@unlink-xyz/sdk": "^0.0.2-canary.0",
+    "viem": "^2.47.10"
+  }
 }

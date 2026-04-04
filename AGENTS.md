@@ -1,3 +1,11 @@
+## Instructions
+
+* Specifications should live at `specs/spec-{timestamp}.md` with the most recent
+  spec available at `specs/spec.md`.
+* If we redesign something there should be a new complete spec created with a
+  current timestamp. Thus we cann see the decision flow over the time.
+
+
 ## Unlink
 
 Docs: UNLINK_DOCS.md in the project root. Original at docs.unlink.xyz

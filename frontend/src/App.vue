@@ -6,13 +6,28 @@ import SideNav from "./components/SideNav.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 import ProgressBar from "./components/ProgressBar.vue";
 import ConnectWalletPrompt from "./components/ConnectWalletPrompt.vue";
+import { useCreator } from "./composables/useCreator";
 import { useMode } from "./composables/useMode";
+import { useToast } from "./composables/useToast";
 import { useWallet } from "./composables/useWallet";
+import { getErrorMessage } from "./lib/api";
 
 const { mode } = useMode();
-const { isConnected } = useWallet();
+const { address, isConnected, signMessage } = useWallet();
+const { loadFromWallet, clear: clearCreator } = useCreator();
+const { add: toast } = useToast();
 const router = useRouter();
 const scrolled = ref(false);
+let creatorSyncToken = 0;
+
+function isUserRejectedCreatorRefresh(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes("user rejected") ||
+    message.includes("rejected the request") ||
+    message.includes("user denied")
+  );
+}
 
 function onScroll() {
   scrolled.value = window.scrollY > 2;
@@ -29,6 +44,46 @@ watch(mode, (m) => {
     router.push(prefix);
   }
 });
+
+watch(
+  () => address.value,
+  (nextAddress, prevAddress) => {
+    const addressChanged = nextAddress !== (prevAddress ?? null);
+    const syncToken = ++creatorSyncToken;
+
+    if (addressChanged) {
+      clearCreator();
+    }
+
+    if (!nextAddress) {
+      return;
+    }
+
+    // Only auto-load the creator profile when the wallet address actually
+    // changed (including first connect). Mode toggles do not trigger a new
+    // signature prompt — users can click "Load Existing Profile" manually.
+    if (!addressChanged || mode.value !== "creator") {
+      return;
+    }
+
+    void (async () => {
+      try {
+        await loadFromWallet(signMessage);
+      } catch (error) {
+        if (syncToken !== creatorSyncToken) {
+          return;
+        }
+
+        if (isUserRejectedCreatorRefresh(error)) {
+          return;
+        }
+
+        toast(`Could not refresh creator identity: ${getErrorMessage(error)}`, "error");
+      }
+    })();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

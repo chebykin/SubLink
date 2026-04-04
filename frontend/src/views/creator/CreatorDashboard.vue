@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { computed, ref, watch } from "vue";
 import StatCard from "../../components/StatCard.vue";
+import CopyButton from "../../components/CopyButton.vue";
+import CreatorSignInPrompt from "../../components/CreatorSignInPrompt.vue";
 import LoadingSkeleton from "../../components/LoadingSkeleton.vue";
 import { useCreator } from "../../composables/useCreator";
 import { useToast } from "../../composables/useToast";
 import { useReveal } from "../../composables/useReveal";
 import * as api from "../../lib/api";
 import type { Plan } from "../../lib/types";
-import { formatUsdc } from "../../lib/format";
 
-const { stored, isRegistered } = useCreator();
+const { stored, creatorId, isRegistered } = useCreator();
 const { add: toast } = useToast();
 
 const plans = ref<Plan[]>([]);
@@ -19,20 +20,35 @@ const actionsRef = ref<HTMLElement | null>(null);
 
 useReveal(actionsRef);
 
-onMounted(async () => {
-  if (!isRegistered.value) {
-    loading.value = false;
-    return;
-  }
-  try {
-    const res = await api.getPlans(stored.value!.id);
-    plans.value = res.plans;
-  } catch (e: unknown) {
-    toast(`Failed to load plans: ${api.getErrorMessage(e)}`, "error");
-  } finally {
-    loading.value = false;
-  }
-});
+let plansLoadToken = 0;
+
+watch(
+  creatorId,
+  async (nextCreatorId) => {
+    const loadToken = ++plansLoadToken;
+    plans.value = [];
+
+    if (!nextCreatorId) {
+      loading.value = false;
+      return;
+    }
+
+    loading.value = true;
+    try {
+      const res = await api.getPlans(nextCreatorId);
+      if (loadToken === plansLoadToken) {
+        plans.value = res.plans;
+      }
+    } catch (e: unknown) {
+      toast(`Failed to load plans: ${api.getErrorMessage(e)}`, "error");
+    } finally {
+      if (loadToken === plansLoadToken) {
+        loading.value = false;
+      }
+    }
+  },
+  { immediate: true },
+);
 
 const activePlans = computed(() => plans.value.filter((p) => p.active).length);
 const totalPlans = computed(() => plans.value.length);
@@ -40,32 +56,48 @@ const totalPlans = computed(() => plans.value.length);
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">Welcome, {{ creatorName }}</h1>
-      <p class="page-subtitle">Creator Dashboard</p>
-    </div>
+    <CreatorSignInPrompt v-if="!isRegistered" />
 
-    <template v-if="!isRegistered">
-      <div class="card register-prompt">
-        <h2>Register as a Creator</h2>
-        <p>Connect your wallet and register to start creating subscription plans.</p>
-        <router-link to="/creator/plans" class="btn btn-primary">Get Started</router-link>
+    <template v-else>
+      <div class="page-header">
+        <h1 class="page-title">Welcome, {{ creatorName }}</h1>
+        <p class="page-subtitle">Creator Dashboard</p>
       </div>
-    </template>
 
-    <template v-else-if="loading">
-      <div class="stats-grid">
+      <div v-if="loading" class="stats-grid">
         <div class="card stat-skeleton" v-for="i in 3" :key="i">
           <LoadingSkeleton variant="stat" />
         </div>
       </div>
-    </template>
 
-    <template v-else>
+      <template v-else>
       <div class="stats-grid">
         <StatCard label="Total Plans" :value="totalPlans" />
         <StatCard label="Active Plans" :value="activePlans" />
         <StatCard label="Plans Created" :value="totalPlans" />
+      </div>
+
+      <div class="credentials card">
+        <div class="cred-header">
+          <h2 class="cred-title">API Credentials</h2>
+          <span class="cred-note">Use these to integrate your creator site with SubLink</span>
+        </div>
+        <div class="cred-grid">
+          <div class="cred-item">
+            <span class="cred-label">Creator ID</span>
+            <div class="cred-row">
+              <code>{{ stored!.id }}</code>
+              <CopyButton :text="stored!.id" label="Creator ID" />
+            </div>
+          </div>
+          <div class="cred-item">
+            <span class="cred-label">API Key</span>
+            <div class="cred-row">
+              <code class="secret">{{ stored!.apiKey }}</code>
+              <CopyButton :text="stored!.apiKey" label="API Key" />
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="quick-actions">
@@ -91,6 +123,7 @@ const totalPlans = computed(() => plans.value.length);
           </router-link>
         </div>
       </div>
+      </template>
     </template>
   </div>
 </template>
@@ -125,22 +158,6 @@ const totalPlans = computed(() => plans.value.length);
   padding: 20px 24px;
 }
 
-.register-prompt {
-  padding: 40px;
-  text-align: center;
-  animation: scale-in 0.4s var(--ease-spring);
-}
-
-.register-prompt h2 {
-  margin: 0 0 8px;
-  font-size: 1.25rem;
-}
-
-.register-prompt p {
-  margin: 0 0 20px;
-  color: var(--text-secondary);
-}
-
 .actions-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -166,6 +183,73 @@ const totalPlans = computed(() => plans.value.length);
 }
 
 .action-card:hover svg {
+  color: var(--accent);
+}
+
+.credentials {
+  padding: 24px;
+  margin-bottom: 32px;
+  animation: card-enter 0.4s var(--ease-decel) 0.2s both;
+}
+
+.cred-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.cred-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.cred-note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.cred-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.cred-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cred-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cred-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cred-row code {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.cred-row code.secret {
   color: var(--accent);
 }
 </style>

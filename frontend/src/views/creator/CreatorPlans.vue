@@ -1,31 +1,26 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
-import StatCard from "../../components/StatCard.vue";
+import { ref, watch } from "vue";
 import StatusBadge from "../../components/StatusBadge.vue";
 import EmptyState from "../../components/EmptyState.vue";
+import CreatorSignInPrompt from "../../components/CreatorSignInPrompt.vue";
 import LoadingSkeleton from "../../components/LoadingSkeleton.vue";
 import { useCreator } from "../../composables/useCreator";
 import { useToast } from "../../composables/useToast";
 import { useReveal } from "../../composables/useReveal";
 import * as api from "../../lib/api";
-import type { Plan, CreatorWithKey } from "../../lib/types";
+import type { Plan } from "../../lib/types";
 import { formatUsdcDisplay, formatInterval } from "../../lib/format";
 
-const { stored, isRegistered, save } = useCreator();
+const { stored, creatorId, isRegistered } = useCreator();
 const { add: toast } = useToast();
 
 const plans = ref<Plan[]>([]);
 const loading = ref(true);
 const showForm = ref(false);
-const showRegister = ref(false);
 const creating = ref(false);
 const plansRef = ref<HTMLElement | null>(null);
 
 useReveal(plansRef);
-
-// Registration form
-const regName = ref("");
-const registering = ref(false);
 
 // Plan form
 const form = ref({
@@ -45,50 +40,41 @@ const intervals = [
   { label: "30 days", value: 2592000 },
 ];
 
-onMounted(async () => {
-  if (!isRegistered.value) {
-    showRegister.value = true;
-    loading.value = false;
-    return;
-  }
-  await loadPlans();
-});
+let plansLoadToken = 0;
 
-async function loadPlans() {
+async function loadPlans(nextCreatorId: string) {
+  const loadToken = ++plansLoadToken;
   loading.value = true;
   try {
-    const res = await api.getPlans(stored.value!.id);
-    plans.value = res.plans;
+    const res = await api.getPlans(nextCreatorId);
+    if (loadToken === plansLoadToken) {
+      plans.value = res.plans;
+    }
   } catch (e: unknown) {
     toast(`Failed to load plans: ${api.getErrorMessage(e)}`, "error");
   } finally {
-    loading.value = false;
+    if (loadToken === plansLoadToken) {
+      loading.value = false;
+    }
   }
 }
 
-async function handleRegister() {
-  if (!regName.value.trim()) {
-    toast("Please enter a creator name", "error");
-    return;
-  }
-  registering.value = true;
-  try {
-    // For MVP, use placeholder addresses — real flow would derive from wallet
-    const result = await api.createCreator({
-      evmAddress: `0x${"0".repeat(40)}`,
-      unlinkAddress: "unlink1placeholder",
-      name: regName.value.trim(),
-    });
-    save(result as CreatorWithKey);
-    toast("Creator registered successfully!", "success");
-    showRegister.value = false;
-    await loadPlans();
-  } catch (e: unknown) {
-    toast(`Registration failed: ${api.getErrorMessage(e)}`, "error");
-  } finally {
-    registering.value = false;
-  }
-}
+watch(
+  creatorId,
+  async (nextCreatorId) => {
+    plansLoadToken += 1;
+    plans.value = [];
+    showForm.value = false;
+
+    if (!nextCreatorId) {
+      loading.value = false;
+      return;
+    }
+
+    await loadPlans(nextCreatorId);
+  },
+  { immediate: true },
+);
 
 async function handleCreate() {
   if (!form.value.name.trim() || !form.value.amount) {
@@ -112,7 +98,9 @@ async function handleCreate() {
     toast("Plan created!", "success");
     form.value = { name: "", amount: "", intervalSeconds: 2592000, description: "", spendingCap: "0" };
     showForm.value = false;
-    await loadPlans();
+    if (creatorId.value) {
+      await loadPlans(creatorId.value);
+    }
   } catch (e: unknown) {
     toast(`Failed to create plan: ${api.getErrorMessage(e)}`, "error");
   } finally {
@@ -123,30 +111,18 @@ async function handleCreate() {
 
 <template>
   <div class="page">
+    <CreatorSignInPrompt v-if="!isRegistered" />
+
+    <template v-else>
     <div class="page-header">
       <div>
         <h1 class="page-title">Plans</h1>
         <p class="page-subtitle">Create and manage subscription plans</p>
       </div>
-      <button v-if="isRegistered" class="btn btn-primary toggle-btn" @click="showForm = !showForm">
+      <button class="btn btn-primary toggle-btn" @click="showForm = !showForm">
         <span class="toggle-icon" :class="{ open: showForm }">+</span>
         {{ showForm ? "Cancel" : "New Plan" }}
       </button>
-    </div>
-
-    <!-- Registration -->
-    <div v-if="showRegister" class="card form-card">
-      <h2 class="form-title">Register as Creator</h2>
-      <p class="form-desc">Enter your creator name to get started.</p>
-      <form @submit.prevent="handleRegister" class="form">
-        <div class="field">
-          <label>Creator Name</label>
-          <input v-model="regName" type="text" placeholder="My Creator Profile" class="input" required />
-        </div>
-        <button type="submit" class="btn btn-primary" :disabled="registering">
-          {{ registering ? "Registering..." : "Register" }}
-        </button>
-      </form>
     </div>
 
     <!-- Create plan form -->
@@ -192,7 +168,7 @@ async function handleCreate() {
       </div>
     </div>
 
-    <div v-else-if="plans.length === 0 && isRegistered">
+    <div v-else-if="plans.length === 0">
       <EmptyState title="No plans yet" description="Create your first subscription plan to start earning." />
     </div>
 
@@ -213,6 +189,7 @@ async function handleCreate() {
         <p v-if="plan.description" class="plan-desc">{{ plan.description }}</p>
       </router-link>
     </div>
+    </template>
   </div>
 </template>
 

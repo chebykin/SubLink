@@ -106,6 +106,5 @@ function handleToggle() {
 
 .toggle-label.active {
   color: var(--accent);
-  transform: translateY(-1px);
 }
 </style>

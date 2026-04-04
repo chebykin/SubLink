@@ -1,4 +1,5 @@
 import { API_URL } from "./constants";
+import type { CreatorAuthProof } from "./creator-auth";
 import type {
   Creator,
   CreatorWithKey,
@@ -55,13 +56,21 @@ export function getCreatorByEvmAddress(evmAddress: string) {
 }
 
 export function createCreator(body: {
-  evmAddress: string;
-  unlinkAddress: string;
   name: string;
+  unlinkAddress: string;
+  webhookUrl?: string;
+  proof: CreatorAuthProof;
 }) {
-  return request<CreatorWithKey>("/creators", {
+  return request<{ id: string; apiKey: string }>("/creators", {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export function revealCreator(proof: CreatorAuthProof) {
+  return request<CreatorWithKey>("/creators/reveal", {
+    method: "POST",
+    body: JSON.stringify({ proof }),
   });
 }
 

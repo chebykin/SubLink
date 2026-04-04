@@ -1,0 +1,22 @@
+{
+  "name": "sublink",
+  "private": true,
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "ops"
+  ],
+  "scripts": {
+    "build": "cd frontend && bun run build",
+    "check": "cd frontend && bun run check && cd ../backend && bun run check",
+    "test": "cd frontend && bun run test && cd ../backend && bun run test",
+    "dev:frontend": "cd frontend && bun run dev",
+    "backend": "cd backend && bun run start",
+    "backend:dev": "cd backend && bun run dev"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

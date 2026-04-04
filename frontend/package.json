@@ -1,0 +1,20 @@
+{
+  "name": "@sublink/frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "check": "vue-tsc --noEmit -p tsconfig.json",
+    "preview": "vite preview",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "vite": "latest",
+    "vue-tsc": "latest"
+  }
+}

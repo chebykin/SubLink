@@ -16,6 +16,7 @@ import type {
   SubscriptionStatus,
   SubscriptionWithPlan,
 } from "../types";
+import { logError, logInfo, logWarn } from "../log";
 import { executeTransferFromSerializedKeys } from "./unlink";
 
 export interface ChargeProcessingResult {
@@ -77,8 +78,10 @@ function nextChargeAt(subscription: SubscriptionWithPlan, chargedAt: string): st
 export async function processSubscriptionCharge(params: {
   subscription: SubscriptionWithPlan;
   chargedAt?: string;
+  source?: "subscribe_initial" | "cron" | "manual";
 }): Promise<ChargeProcessingResult> {
   const chargedAt = params.chargedAt ?? nowIso();
+  const source = params.source ?? "manual";
   const freshSubscription = getSubscriptionWithPlanById(params.subscription.id);
   if (!freshSubscription || freshSubscription.status !== "active") {
     throw new SubscriptionInactiveError(params.subscription.id);
@@ -146,6 +149,20 @@ export async function processSubscriptionCharge(params: {
       throw new Error(`Failed to update charge ${pendingCharge.id} as success.`);
     }
 
+    logInfo("charge.succeeded", {
+      source,
+      chargeId: completedCharge.id,
+      subscriptionId: subscription.id,
+      planId: subscription.planId,
+      creatorId: subscription.creator.id,
+      amount: subscription.plan.amount,
+      unlinkTxId: transfer.txId,
+      totalSpent,
+      chargeCount: updatedSubscription.chargeCount,
+      subscriptionStatus: updatedSubscription.status,
+      chargedAt,
+    });
+
     return {
       charge: completedCharge,
       subscription: updatedSubscription,
@@ -183,6 +200,20 @@ export async function processSubscriptionCharge(params: {
     throw new Error(`Failed to update charge ${pendingCharge.id} as failed.`);
   }
 
+  logWarn("charge.failed", {
+    source,
+    chargeId: failedCharge.id,
+    subscriptionId: subscription.id,
+    planId: subscription.planId,
+    creatorId: subscription.creator.id,
+    amount: subscription.plan.amount,
+    unlinkTxId: transfer.txId,
+    errorMessage: transfer.errorMessage,
+    consecutiveFailures: updatedSubscription.consecutiveFailures,
+    subscriptionStatus: updatedSubscription.status,
+    chargedAt,
+  });
+
   return {
     charge: failedCharge,
     subscription: updatedSubscription,
@@ -194,6 +225,10 @@ export async function runCronOnce(): Promise<CronRunSummary> {
   const startedAt = nowIso();
 
   if (cronMutex) {
+    logWarn("cron.run.skipped", {
+      reason: "already_running",
+      startedAt,
+    });
     return {
       startedAt,
       finishedAt: nowIso(),
@@ -215,10 +250,18 @@ export async function runCronOnce(): Promise<CronRunSummary> {
   let completedByCap = 0;
 
   try {
+    logInfo("cron.run.started", {
+      startedAt,
+    });
     const due = getDueSubscriptions({
       nowIso: startedAt,
       maxConsecutiveFailures: MAX_CONSECUTIVE_FAILURES,
       limit: 200,
+    });
+
+    logInfo("cron.run.due_subscriptions_loaded", {
+      startedAt,
+      dueCount: due.length,
     });
 
     for (const subscription of due) {
@@ -227,6 +270,7 @@ export async function runCronOnce(): Promise<CronRunSummary> {
         const result = await processSubscriptionCharge({
           subscription,
           chargedAt: nowIso(),
+          source: "cron",
         });
 
         if (result.outcome === "success") {
@@ -250,16 +294,18 @@ export async function runCronOnce(): Promise<CronRunSummary> {
 
         failed += 1;
         const message = error instanceof Error ? error.message : String(error);
-        console.error(
-          `[cron] charge failed for subscription ${subscription.id}: ${message}`,
-        );
+        logError("cron.charge.processing_failed", {
+          subscriptionId: subscription.id,
+          planId: subscription.planId,
+          message,
+        });
       }
     }
   } finally {
     cronMutex = false;
   }
 
-  return {
+  const summary = {
     startedAt,
     finishedAt: nowIso(),
     attempted,
@@ -269,6 +315,14 @@ export async function runCronOnce(): Promise<CronRunSummary> {
     completedByCap,
     skippedBecauseRunning: false,
   };
+
+  logInfo("cron.run.completed", {
+    ...summary,
+    durationMs:
+      Date.parse(summary.finishedAt) - Date.parse(summary.startedAt),
+  });
+
+  return summary;
 }
 
 export function startCronExecutor(): void {
@@ -279,9 +333,15 @@ export function startCronExecutor(): void {
   cronTimer = setInterval(() => {
     void runCronOnce().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[cron] run failed: ${message}`);
+      logError("cron.run.failed", {
+        message,
+      });
     });
   }, CRON_INTERVAL_MS);
+
+  logInfo("cron.executor.started", {
+    intervalMs: CRON_INTERVAL_MS,
+  });
 }
 
 export function stopCronExecutor(): void {
@@ -303,5 +363,9 @@ export async function runChargeForSubscriptionId(
   if (!subscription) {
     throw new Error(`Subscription not found: ${subscriptionId}`);
   }
-  return processSubscriptionCharge({ subscription, chargedAt: nowIso() });
+  return processSubscriptionCharge({
+    subscription,
+    chargedAt: nowIso(),
+    source: "manual",
+  });
 }

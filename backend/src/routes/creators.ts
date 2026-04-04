@@ -16,6 +16,7 @@ import {
   readJsonBody,
   requireString,
 } from "../http";
+import { logInfo } from "../log";
 
 interface CreateCreatorBody {
   evmAddress?: unknown;
@@ -62,6 +63,13 @@ export async function handleCreateCreator(request: Request): Promise<Response> {
       webhookUrl,
       apiKey: randomHex(16),
       createdAt: nowIso(),
+    });
+
+    logInfo("creator.created", {
+      creatorId: creator.id,
+      evmAddress: creator.evmAddress,
+      unlinkAddress: creator.unlinkAddress,
+      name: creator.name,
     });
 
     return jsonResponse({ id: creator.id, apiKey: creator.apiKey }, 201);

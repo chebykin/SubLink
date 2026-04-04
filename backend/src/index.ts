@@ -1,9 +1,11 @@
-import { SERVER_PORT } from "./config";
+import { assertCriticalBackendEnv, SERVER_PORT } from "./config";
 import { initDatabase } from "./db";
+import { logInfo } from "./log";
 import { handleRequest } from "./router";
 import { startCronExecutor } from "./services/cron";
 
 export function startServer(port = SERVER_PORT) {
+  assertCriticalBackendEnv();
   initDatabase();
   startCronExecutor();
 
@@ -17,5 +19,8 @@ export function startServer(port = SERVER_PORT) {
 
 if (import.meta.main) {
   const server = startServer();
-  console.log(`Backend listening on http://localhost:${server.port}`);
+  logInfo("server.started", {
+    port: server.port,
+    url: `http://localhost:${server.port}`,
+  });
 }

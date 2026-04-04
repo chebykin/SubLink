@@ -13,6 +13,7 @@ import {
   requireInteger,
   requireString,
 } from "../http";
+import { logInfo } from "../log";
 
 interface CreatePlanBody {
   creatorId?: unknown;
@@ -81,6 +82,15 @@ export async function handleCreatePlan(request: Request): Promise<Response> {
       spendingCap,
       active: true,
       createdAt: nowIso(),
+    });
+
+    logInfo("plan.created", {
+      planId: plan.id,
+      creatorId: plan.creatorId,
+      name: plan.name,
+      amount: plan.amount,
+      intervalSeconds: plan.intervalSeconds,
+      spendingCap: plan.spendingCap,
     });
 
     return jsonResponse(plan, 201);

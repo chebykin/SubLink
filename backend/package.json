@@ -7,9 +7,9 @@
     "viem": "^2.47.10"
   },
   "scripts": {
-    "dev": "bun --watch ./src/index.ts",
-    "start": "bun ./src/index.ts",
+    "dev": "sh -c 'set -a; [ -f ../.env ] && . ../.env; set +a; exec bun --watch ./src/index.ts'",
+    "start": "sh -c 'set -a; [ -f ../.env ] && . ../.env; set +a; exec bun ./src/index.ts'",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "TEST_DB=$(mktemp \"${TMPDIR:-/tmp}/sublink-backend-test-XXXXXX.db\") && trap 'rm -f \"$TEST_DB\" \"$TEST_DB-shm\" \"$TEST_DB-wal\"' EXIT && DB_PATH=\"$TEST_DB\" bun test --max-concurrency=1"
+    "test": "TEST_DB=$(mktemp \"${TMPDIR:-/tmp}/sublink-backend-test-XXXXXX.db\") && trap 'rm -f \"$TEST_DB\" \"$TEST_DB-shm\" \"$TEST_DB-wal\"' EXIT && DB_PATH=\"$TEST_DB\" SUPPRESS_BACKEND_LOGS=1 bun test --max-concurrency=1"
   }
 }

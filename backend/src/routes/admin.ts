@@ -1,5 +1,6 @@
 import { getAdminSecret } from "../config";
 import { errorResponse, jsonResponse } from "../http";
+import { logInfo } from "../log";
 import { runCronOnce } from "../services/cron";
 
 export async function handleRunCron(request: Request): Promise<Response> {
@@ -13,6 +14,9 @@ export async function handleRunCron(request: Request): Promise<Response> {
     return errorResponse(403, "Invalid admin key.");
   }
 
+  logInfo("cron.run.triggered", {
+    source: "admin_endpoint",
+  });
   const summary = await runCronOnce();
   return jsonResponse(summary);
 }

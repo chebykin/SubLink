@@ -10,6 +10,7 @@ import {
 } from "./routes/subscriptions";
 import { handleVerify } from "./routes/verify";
 import { HttpError, errorResponse } from "./http";
+import { logError, logWarn } from "./log";
 
 function matchPath(pathname: string, pattern: RegExp): string[] | null {
   const match = pathname.match(pattern);
@@ -22,16 +23,48 @@ function matchPath(pathname: string, pattern: RegExp): string[] | null {
 export async function handleRequest(request: Request): Promise<Response> {
   const { pathname } = new URL(request.url);
   const method = request.method.toUpperCase();
+  const startedAt = Date.now();
+
+  async function logRejectedResponse(response: Response): Promise<Response> {
+    if (response.status < 400) {
+      return response;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    let bodyText: string | undefined;
+
+    try {
+      bodyText = await response.clone().text();
+    } catch {
+      bodyText = undefined;
+    }
+
+    const details = {
+      method,
+      pathname,
+      status: response.status,
+      durationMs,
+      body: bodyText,
+    };
+
+    if (response.status >= 500) {
+      logError("http.request.rejected", details);
+    } else {
+      logWarn("http.request.rejected", details);
+    }
+
+    return response;
+  }
 
   try {
     // Public: no user data
     if (method === "GET" && pathname === "/health") {
-      return handleHealth();
+      return logRejectedResponse(handleHealth());
     }
 
     // Public: open registration (no creator auth implemented yet)
     if (method === "POST" && pathname === "/creators") {
-      return handleCreateCreator(request);
+      return logRejectedResponse(await handleCreateCreator(request));
     }
 
     // Public: returns name + unlink address, no apiKey
@@ -40,19 +73,19 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (creatorMatch) {
         const [creatorId] = creatorMatch;
         if (creatorId) {
-          return handleGetCreator(creatorId);
+          return logRejectedResponse(handleGetCreator(creatorId));
         }
       }
     }
 
     // Public: creators create plans without auth (no creator auth implemented yet)
     if (method === "POST" && pathname === "/plans") {
-      return handleCreatePlan(request);
+      return logRejectedResponse(await handleCreatePlan(request));
     }
 
     // Public: plan discovery for subscribers
     if (method === "GET" && pathname === "/plans") {
-      return handleListPlans(request);
+      return logRejectedResponse(handleListPlans(request));
     }
 
     // Public: includes creator unlink address needed for subscribe flow
@@ -61,19 +94,19 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (planMatch) {
         const [planId] = planMatch;
         if (planId) {
-          return handleGetPlan(planId);
+          return logRejectedResponse(handleGetPlan(planId));
         }
       }
     }
 
     // Sensitive input: receives spending keys over HTTPS, keys stripped from all responses
     if (method === "POST" && pathname === "/subscribe") {
-      return handleSubscribe(request);
+      return logRejectedResponse(await handleSubscribe(request));
     }
 
     // Bearer-gated: only returns caller's own subscriptions, keys stripped
     if (method === "GET" && pathname === "/subscriptions") {
-      return handleListSubscriptions(request);
+      return logRejectedResponse(await handleListSubscriptions(request));
     }
 
     // Bearer-gated + owner check: prevents cancelling others' subscriptions
@@ -82,7 +115,9 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (subscriptionMatch) {
         const [subscriptionId] = subscriptionMatch;
         if (subscriptionId) {
-          return handleCancelSubscription(subscriptionId, request);
+          return logRejectedResponse(
+            await handleCancelSubscription(subscriptionId, request),
+          );
         }
       }
     }
@@ -93,14 +128,16 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (chargesMatch) {
         const [subscriptionId] = chargesMatch;
         if (subscriptionId) {
-          return handleGetCharges(subscriptionId, request);
+          return logRejectedResponse(
+            await handleGetCharges(subscriptionId, request),
+          );
         }
       }
     }
 
     // Admin key required: manual trigger on top of the already-running setInterval loop
     if (method === "POST" && pathname === "/admin/run-cron") {
-      return handleRunCron(request);
+      return logRejectedResponse(await handleRunCron(request));
     }
 
     // Creator API key required: reveals if a subscriber is active for a plan
@@ -109,20 +146,24 @@ export async function handleRequest(request: Request): Promise<Response> {
       if (verifyMatch) {
         const [planId] = verifyMatch;
         if (planId) {
-          return handleVerify(planId, request);
+          return logRejectedResponse(await handleVerify(planId, request));
         }
       }
     }
 
-    return errorResponse(404, "Route not found.");
+    return logRejectedResponse(errorResponse(404, "Route not found."));
   } catch (error) {
     if (error instanceof HttpError) {
-      return errorResponse(error.status, error.message, error.details);
+      return logRejectedResponse(
+        errorResponse(error.status, error.message, error.details),
+      );
     }
 
-    return errorResponse(
-      500,
-      error instanceof Error ? error.message : "Unexpected server error.",
+    return logRejectedResponse(
+      errorResponse(
+        500,
+        error instanceof Error ? error.message : "Unexpected server error.",
+      ),
     );
   }
 }

@@ -52,5 +52,16 @@ export function getAdminSecret(): string | undefined {
   return readOptionalEnv("ADMIN_SECRET");
 }
 
+export function assertCriticalBackendEnv(): void {
+  const required = ["UNLINK_API_KEY", "UNLINK_API_ENDPOINT"] as const;
+  const missing = required.filter((name) => !readOptionalEnv(name));
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required backend environment variable(s): ${missing.join(", ")}`,
+    );
+  }
+}
+
 export const POLL_INTERVAL_MS = readNumberEnv("UNLINK_POLL_INTERVAL_MS", 3_000);
 export const POLL_TIMEOUT_MS = readNumberEnv("UNLINK_POLL_TIMEOUT_MS", 180_000);

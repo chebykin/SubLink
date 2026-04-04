@@ -5,7 +5,7 @@ import {
   type PrivateKeyAccount,
 } from "viem/accounts";
 
-import { MAX_CONSECUTIVE_FAILURES } from "./config";
+import { assertCriticalBackendEnv, MAX_CONSECUTIVE_FAILURES } from "./config";
 import { listChargesBySubscriptionId } from "./db/charges";
 import { createCreator } from "./db/creators";
 import { getDatabase, initDatabase } from "./db/index";
@@ -45,6 +45,8 @@ const ALICE_AUTH_ACCOUNT = privateKeyToAccount(ALICE_AUTH_PRIVATE_KEY);
 const BOB_AUTH_ACCOUNT = privateKeyToAccount(BOB_AUTH_PRIVATE_KEY);
 
 let originalAdminSecret: string | undefined;
+let originalUnlinkApiKey: string | undefined;
+let originalUnlinkApiEndpoint: string | undefined;
 
 beforeAll(() => {
   initDatabase();
@@ -62,6 +64,8 @@ beforeEach(() => {
   setTransferExecutorForTests(null);
   resetAccountTransferLocksForTests();
   originalAdminSecret = Bun.env.ADMIN_SECRET;
+  originalUnlinkApiKey = Bun.env.UNLINK_API_KEY;
+  originalUnlinkApiEndpoint = Bun.env.UNLINK_API_ENDPOINT;
 });
 
 afterEach(() => {
@@ -72,6 +76,18 @@ afterEach(() => {
     delete Bun.env.ADMIN_SECRET;
   } else {
     Bun.env.ADMIN_SECRET = originalAdminSecret;
+  }
+
+  if (originalUnlinkApiKey === undefined) {
+    delete Bun.env.UNLINK_API_KEY;
+  } else {
+    Bun.env.UNLINK_API_KEY = originalUnlinkApiKey;
+  }
+
+  if (originalUnlinkApiEndpoint === undefined) {
+    delete Bun.env.UNLINK_API_ENDPOINT;
+  } else {
+    Bun.env.UNLINK_API_ENDPOINT = originalUnlinkApiEndpoint;
   }
 });
 
@@ -258,6 +274,15 @@ test.serial("account key serialization round-trips bigint and bytes fields", () 
   expect(restored.nullifyingKey).toBe(source.nullifyingKey);
   expect(restored.masterPublicKey).toBe(source.masterPublicKey);
   expect(restored.address).toBe(source.address);
+});
+
+test.serial("backend startup config rejects missing critical Unlink env vars", () => {
+  delete Bun.env.UNLINK_API_KEY;
+  delete Bun.env.UNLINK_API_ENDPOINT;
+
+  expect(() => assertCriticalBackendEnv()).toThrow(
+    "Missing required backend environment variable(s): UNLINK_API_KEY, UNLINK_API_ENDPOINT",
+  );
 });
 
 test.serial("subscribe proof verification accepts matching auth key", async () => {

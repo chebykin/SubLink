@@ -22,6 +22,7 @@ import {
   requireSubscriberAuth,
   verifySubscribeProof,
 } from "../services/bearer-token";
+import { logInfo } from "../log";
 import type { Subscription } from "../types";
 
 interface SubscribeBody {
@@ -127,6 +128,15 @@ export async function handleSubscribe(request: Request): Promise<Response> {
       cancelledAt: null,
     });
 
+    logInfo("subscription.created", {
+      subscriptionId: subscription.id,
+      planId: subscription.planId,
+      authKeyId: subscription.authKeyId,
+      creatorId: creator.id,
+      unlinkAddress: subscription.unlinkAddress,
+      nextChargeAt: subscription.nextChargeAt,
+    });
+
     const firstCharge = await processSubscriptionCharge({
       subscription: {
         ...subscription,
@@ -134,6 +144,7 @@ export async function handleSubscribe(request: Request): Promise<Response> {
         creator,
       },
       chargedAt: nowIso(),
+      source: "subscribe_initial",
     });
 
     return jsonResponse(
@@ -216,6 +227,14 @@ export async function handleCancelSubscription(
     if (!cancelled) {
       return errorResponse(500, "Failed to cancel subscription.");
     }
+
+    logInfo("subscription.cancelled", {
+      subscriptionId: cancelled.id,
+      planId: cancelled.planId,
+      authKeyId: cancelled.authKeyId,
+      cancelledAt: cancelled.cancelledAt,
+      reason: "subscriber_request",
+    });
 
     return jsonResponse(toSubscriptionResponse(cancelled));
   } catch (error) {

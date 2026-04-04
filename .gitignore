@@ -1,7 +1,12 @@
 .env
 node_modules
 dist
+dist-a
+dist-b
 coverage
 .DS_Store
 vendor
 .idea
+.claude
+backend/data/
+specs/plan-*

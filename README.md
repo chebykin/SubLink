@@ -75,46 +75,73 @@ The server recovers the `authKeyId` from the signature — no server-side token 
 
 ### Creator Verification
 
-Creators verify subscriber access from their backend via `GET /verify/:planId`. This requires two credentials:
+Creators verify subscriber access via `GET /verify/:planId`.
+
+In the demo mock sites this request is made directly from the creator site. In production, the same flow should be proxied through the creator's backend so the creator API key stays server-side.
+
+This requires two credentials:
 
 - **`x-api-key` header** — the creator's API key (32 random hex chars, issued at creator registration). Proves the caller is the plan's owner.
-- **`Authorization: Bearer` header** — the subscriber's bearer token, forwarded by the creator's site.
+- **`Authorization: Bearer` header** — the subscriber's bearer token, forwarded by the creator gate.
 
 The server checks: API key matches the plan's creator, bearer token is valid, recovered `authKeyId` matches the subscription, the subscription belongs to this plan, and the subscriber's `paidThroughAt` is still in the future.
 
-If the subscriber has no token or an invalid one, the endpoint returns a 402 with plan metadata and the SubLink API URL — a discovery response the frontend can use to prompt subscription.
+If the subscriber has no token or an invalid one, the endpoint returns a 402 with plan metadata and the SubLink API URL so the creator gate can show a subscribe/paywall prompt.
 
-### End-to-End Access Flow
+### End-to-End Subscriber Access Check Flow
+
+This is the flow that runs when a subscriber opens gated creator content and the creator gate must decide whether to unlock access.
 
 ```mermaid
 sequenceDiagram
     participant U as Subscriber<br/>(browser)
     participant W as EVM Wallet
-    participant C as Creator Site
+    participant G as Creator Access Gate<br/>(demo site now,<br/>creator backend in prod)
     participant S as SubLink API
 
-    U->>C: visit site, connect wallet
-    C->>W: sign "sublink-auth-v1"
-    W-->>C: signature
-    Note over C: authSeed = keccak256(sig)<br/>authKey = privKey(authSeed)
+    U->>G: Open gated page
+    G->>W: Sign "sublink-auth-v1"
+    W-->>G: Wallet signature
+    Note over G: authSeed = keccak256(signature)<br/>authKey = secp256k1 private key(authSeed)
 
-    Note over C: sign list token with authKey
-    C->>S: GET /subscriptions?planId=X<br/>+ list token
-    S-->>C: active subscription id
+    G->>G: Sign list token with authKey<br/>list.[expiry].[sig]
+    G->>S: GET /subscriptions?planId=X<br/>Authorization: Bearer [listToken]
+    S->>S: Recover authKeyId from list token<br/>Filter subscriptions by authKeyId + planId
+    S-->>G: matching subscriptions[]
 
-    Note over C: sign bearer token with authKey
-    C->>S: GET /verify/:planId<br/>+ bearer token<br/>+ creator API key
-    S->>S: ECDSA recover → authKeyId<br/>check subscription + paidThroughAt
-    S-->>C: 200 OK  (or 402 + plan metadata)
-    C-->>U: unlock content
+    alt matching subscription found
+        G->>G: Pick subscriptionId
+        G->>G: Sign bearer token with authKey<br/>[subscriptionId].[expiry].[sig]
+        G->>S: GET /verify/:planId<br/>Authorization: Bearer [bearerToken]<br/>X-Api-Key: creator API key
+        S->>S: Recover authKeyId from bearer token<br/>Load subscription by subscriptionId<br/>Check planId + authKeyId + paidThroughAt
+        alt subscription is current and paid
+            S-->>G: 200 { valid: true }
+            G-->>U: Unlock content
+        else token invalid or subscription not entitled
+            S-->>G: 402 + plan metadata
+            G-->>U: Show subscribe/paywall
+        end
+    else no subscription found for this plan
+        G->>S: GET /verify/:planId<br/>Authorization missing or invalid<br/>X-Api-Key: creator API key
+        S-->>G: 402 + plan metadata
+        G-->>U: Show subscribe/paywall
+    end
 ```
 
-Two signatures are needed because the creator's site doesn't know the subscriber's `subscriptionId` upfront:
+### Why Two Requests Are Needed Before Access Can Be Decided
 
-1. **List token** — signs a lookup request. Asks SubLink: *"what subscription does this auth key have for plan X?"* SubLink returns the `subscriptionId`.
-2. **Bearer token** — signs a scoped access proof. Bound to that specific `subscriptionId`, so it proves ongoing access to *that one subscription* on every verify call.
+`GET /verify/:planId` is the final entitlement check, but its bearer token is intentionally scoped to one concrete `subscriptionId`.
 
-The first is a discovery step; the second is the actual access credential. Both share the same format — `<id>.<expiry>.<sig>` where `sig` is ECDSA over `sublink-bearer-v1:<id>:<expiry>` signed with the auth key.
+Right after the subscriber connects a wallet, the creator gate only knows the subscriber's derived `authKeyId`. It does not yet know which `subscriptionId` belongs to that auth key for this plan, or whether there is one at all.
+
+So the flow is split into two requests:
+
+1. **Discovery request** — `GET /subscriptions?planId=X` with a list token asks SubLink which subscriptions belong to this auth key for this plan.
+2. **Entitlement request** — `GET /verify/:planId` with a bearer token bound to one `subscriptionId` proves that specific subscription is still valid right now.
+
+In short: request 1 discovers *which subscription is mine for this plan?* Request 2 answers *does that subscription currently grant access?*
+
+Both tokens share the same wire format, `<id>.<expiry>.<sig>`, where `sig` is ECDSA over `sublink-bearer-v1:<id>:<expiry>` signed with the auth key. The difference is the discovery request uses the literal id `list`, while the entitlement request uses a real `subscriptionId`.
 
 ## Creators
 

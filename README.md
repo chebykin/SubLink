@@ -99,25 +99,27 @@ sequenceDiagram
     Note over C: authSeed = keccak256(sig)<br/>authKey = privKey(authSeed)
 
     Note over C: sign list token with authKey
-    C->>S: GET /subscriptions?planId=X<br/>Bearer list token
+    C->>S: GET /subscriptions?planId=X<br/>+ list token
     S-->>C: active subscription id
 
     Note over C: sign bearer token with authKey
-    C->>S: GET /verify/:planId<br/>Bearer bearer token<br/>x-api-key creator key
+    C->>S: GET /verify/:planId<br/>+ bearer token<br/>+ creator API key
     S->>S: ECDSA recover → authKeyId<br/>check subscription + paidThroughAt
     S-->>C: 200 OK  (or 402 + plan metadata)
     C-->>U: unlock content
 ```
 
-Both tokens use the same format — `<id>.<expiry>.<sig>` where `sig` is ECDSA over `sublink-bearer-v1:<id>:<expiry>` signed with the auth key. They differ only in scope:
+Two signatures are needed because the creator's site doesn't know the subscriber's `subscriptionId` upfront:
 
-- **List token** (`id = "list"`) — used once to ask SubLink which subscription this auth key has for a given plan.
-- **Bearer token** (`id = <subscriptionId>`) — used to prove ongoing access to a specific subscription. Sent on every verify call.
+1. **List token** — signs a lookup request. Asks SubLink: *"what subscription does this auth key have for plan X?"* SubLink returns the `subscriptionId`.
+2. **Bearer token** — signs a scoped access proof. Bound to that specific `subscriptionId`, so it proves ongoing access to *that one subscription* on every verify call.
+
+The first is a discovery step; the second is the actual access credential. Both share the same format — `<id>.<expiry>.<sig>` where `sig` is ECDSA over `sublink-bearer-v1:<id>:<expiry>` signed with the auth key.
 
 ## Creators
 
-- [Site A](https://site-a.sublink.lol) — TODO
-- [Site B](https://site-b.sublink.lol) — TODO
+- [Creator 1](https://creator-1.sublink.lol)
+- [Creator 2](https://creator-1.sublink.lol)
 
 ## Q&A
 

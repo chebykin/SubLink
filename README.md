@@ -11,7 +11,7 @@ SubLink is a privacy-preserving subscription protocol powered by Unlink private 
 - `frontend/` - main SubLink frontend (Vue + Vite)
 - `backend/` - Bun + TypeScript API, SQLite state, cron charger, verification API
 - `ops/` - manual scripts for creator setup, subscribe flow, bearer token, and demo orchestration
-- `mock-sites/` - two creator-site builds (`site-a`, `site-b`) from shared Vue source
+- `mock-sites/` - demo creator sites (see [Creators](#creators))
 
 ## Root Commands
 
@@ -21,8 +21,8 @@ SubLink is a privacy-preserving subscription protocol powered by Unlink private 
 - `bun run check` - typecheck frontend + backend
 - `bun run test` - run frontend + backend tests
 - `bun run build` - build frontend
-- `bun run build:site-a` - build mock creator site A
-- `bun run build:site-b` - build mock creator site B
+- `bun run build:site-a` - build creator site A
+- `bun run build:site-b` - build creator site B
 
 ## How It Works
 
@@ -80,14 +80,69 @@ Creators verify subscriber access from their backend via `GET /verify/:planId`. 
 - **`x-api-key` header** — the creator's API key (32 random hex chars, issued at creator registration). Proves the caller is the plan's owner.
 - **`Authorization: Bearer` header** — the subscriber's bearer token, forwarded by the creator's site.
 
-The server checks: API key matches the plan's creator, bearer token is valid, recovered `authKeyId` has an active subscription to this plan.
+The server checks: API key matches the plan's creator, bearer token is valid, recovered `authKeyId` matches the subscription, the subscription belongs to this plan, and the subscriber's `paidThroughAt` is still in the future.
 
 If the subscriber has no token or an invalid one, the endpoint returns a 402 with plan metadata and the SubLink API URL — a discovery response the frontend can use to prompt subscription.
+
+### End-to-End Access Flow
+
+The bearer token is minted **locally on the creator's site** — SubLink never issues or stores tokens. The creator's site derives the subscriber's auth key from their wallet, then signs tokens with it.
+
+```mermaid
+sequenceDiagram
+    participant U as Subscriber<br/>(browser)
+    participant W as EVM Wallet
+    participant C as Creator Site
+    participant S as SubLink API
+
+    U->>C: visit site, connect wallet
+    C->>W: sign "sublink-auth-v1"
+    W-->>C: signature
+    Note over C: authSeed = keccak256(sig)<br/>authKey = privKey(authSeed)
+
+    C->>C: sign list token with authKey
+    C->>S: GET /subscriptions?planId=X<br/>Bearer: list token
+    S-->>C: active subscription { id }
+
+    C->>C: sign bearer token with authKey<br/>subId.expiry.signature
+    C->>S: GET /verify/:planId<br/>Bearer: token<br/>x-api-key: creator key
+    S->>S: ECDSA recover → authKeyId<br/>check subscription + paidThroughAt
+    S-->>C: 200 OK  (or 402 + plan metadata)
+    C-->>U: unlock content
+```
+
+The creator's site is the token issuer. SubLink only verifies tokens it has never seen. No sessions, no login, no OAuth — two wallet signatures derive the auth key once, then the site signs tokens locally forever.
+
+## Creators
+
+- [Site A](https://site-a.sublink.lol) — TODO
+- [Site B](https://site-b.sublink.lol) — TODO
+
+## Q&A
+
+**Do I need to generate a new account for my Unlink wallet or auth key?**
+
+No. Both are derived deterministically from your existing EVM wallet. Your Unlink account is created by signing `"sublink:<planId>"` — the signature is hashed to produce a seed that generates the account. Your auth key is derived by signing `"sublink-auth-v1"`. As long as you have your EVM wallet, you can always re-derive both. No extra keys to generate or back up.
+
+**Does anyone see my Unlink account private key?**
+
+The SubLink backend receives your dedicated Unlink account keys so it can execute recurring charges on your behalf. Nobody else — not the creator, not on-chain observers — can see them. This is the current trust tradeoff: you trust the SubLink backend to only charge according to plan terms. A future TEE upgrade would protect keys even from the server operator. You can also cancel anytime or withdraw your USDC from the dedicated account to cut off access.
+
+**How does the creator know I paid my subscription?**
+
+The creator never sees the payment directly — Unlink transfers are private on-chain. Instead, the creator's site calls SubLink's `/verify/:planId` endpoint with your bearer token and the creator's API key. SubLink checks that your auth key matches the subscription and that the subscription is still paid through right now. The creator learns that you currently have access without learning your identity, wallet address, or payment details.
+
+**Why is a separate auth key needed? Can't the Unlink account handle authentication?**
+
+Your Unlink account keys are shared with the SubLink backend so it can charge you on schedule. If you also used those same keys to sign bearer tokens, anyone who intercepts a token could recover the key material — and now they have the keys that control your funds. With a separate auth key, the worst case of a leaked bearer token is someone proving they have your subscription — they can't touch your money. It's the same reason you don't use your bank card PIN as your website password: keep the thing that moves money separate from the thing that proves identity.
 
 ## Required Env Vars
 
 - `UNLINK_API_KEY` — Unlink protocol API key
 - `UNLINK_API_ENDPOINT` — Unlink engine URL
+
+### Debug / Ops Scripts Only
+
 - `DEPLOYER` — private key for deploying contracts
-- `ALICE` — subscriber wallet private key (ops scripts)
-- `BOB` — creator/receiver wallet private key (ops scripts)
+- `ALICE` — subscriber wallet private key
+- `BOB` — creator/receiver wallet private key

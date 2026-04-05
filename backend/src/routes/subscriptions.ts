@@ -1,6 +1,6 @@
 import { isAddress } from "viem";
 
-import { getCreatorById } from "../db/creators";
+import { getCreatorByApiKey, getCreatorById } from "../db/creators";
 import { getPlanById } from "../db/plans";
 import {
   cancelSubscription,
@@ -308,6 +308,35 @@ export async function handleSubscribe(request: Request): Promise<Response> {
     return errorResponse(
       500,
       error instanceof Error ? error.message : "Failed to create subscription.",
+    );
+  }
+}
+
+export async function handleListCreatorSubscriptions(
+  request: Request,
+): Promise<Response> {
+  try {
+    const apiKey = request.headers.get("x-api-key")?.trim();
+    if (!apiKey) {
+      return errorResponse(401, "Missing X-Api-Key header.");
+    }
+    const creator = getCreatorByApiKey(apiKey);
+    if (!creator) {
+      return errorResponse(401, "Invalid API key.");
+    }
+    const subscriptions = listSubscriptions({ creatorId: creator.id });
+    return jsonResponse({
+      subscriptions: subscriptions.map(toSubscriptionWithPlanResponse),
+    });
+  } catch (error) {
+    if (error instanceof HttpError) {
+      return errorResponse(error.status, error.message, error.details);
+    }
+    return errorResponse(
+      500,
+      error instanceof Error
+        ? error.message
+        : "Failed to list creator subscriptions.",
     );
   }
 }

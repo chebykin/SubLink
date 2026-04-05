@@ -1,40 +1,139 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
+import StatusBadge from "../../components/StatusBadge.vue";
+import EmptyState from "../../components/EmptyState.vue";
+import CreatorSignInPrompt from "../../components/CreatorSignInPrompt.vue";
+import LoadingSkeleton from "../../components/LoadingSkeleton.vue";
+import { useCreator } from "../../composables/useCreator";
+import { useToast } from "../../composables/useToast";
+import * as api from "../../lib/api";
+import type { Subscription } from "../../lib/types";
+import { formatUsdcDisplay } from "../../lib/format";
+
+const { apiKey, isRegistered } = useCreator();
+const { add: toast } = useToast();
+
+const subscriptions = ref<Subscription[]>([]);
+const loading = ref(true);
+
+let loadToken = 0;
+
+async function load(key: string) {
+  const token = ++loadToken;
+  loading.value = true;
+  try {
+    const res = await api.getCreatorSubscriptions(key);
+    if (token === loadToken) {
+      subscriptions.value = res.subscriptions;
+    }
+  } catch (e: unknown) {
+    toast(`Failed to load subscribers: ${api.getErrorMessage(e)}`, "error");
+  } finally {
+    if (token === loadToken) {
+      loading.value = false;
+    }
+  }
+}
+
+watch(
+  apiKey,
+  async (key) => {
+    loadToken += 1;
+    subscriptions.value = [];
+    if (!key) {
+      loading.value = false;
+      return;
+    }
+    await load(key);
+  },
+  { immediate: true },
+);
+
+function shortId(id: string): string {
+  return `${id.slice(0, 8)}…${id.slice(-4)}`;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString();
+}
 </script>
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">Subscribers</h1>
-      <p class="page-subtitle">View subscriptions to your plans</p>
-    </div>
+    <CreatorSignInPrompt v-if="!isRegistered" />
 
-    <div class="coming-soon-wrap">
-      <!-- Blurred mockup grid -->
-      <div class="mockup-grid">
-        <div class="mockup-card card" v-for="i in 3" :key="i">
-          <div class="mockup-row">
-            <div class="skeleton" style="width: 120px; height: 16px" />
-            <div class="skeleton" style="width: 60px; height: 22px; border-radius: 20px" />
-          </div>
-          <div class="mockup-details">
-            <div class="skeleton" style="width: 80px; height: 12px" />
-            <div class="skeleton" style="width: 100px; height: 12px" />
-            <div class="skeleton" style="width: 70px; height: 12px" />
-          </div>
+    <template v-else>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Subscribers</h1>
+          <p class="page-subtitle">
+            {{ subscriptions.length }} subscription{{ subscriptions.length === 1 ? "" : "s" }} across your plans
+          </p>
+        </div>
+        <button
+          class="btn"
+          :disabled="loading || !apiKey"
+          @click="apiKey && load(apiKey)"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div v-if="loading" class="list">
+        <div class="card" v-for="i in 3" :key="i" style="padding: 20px 24px">
+          <LoadingSkeleton :lines="3" />
         </div>
       </div>
 
-      <!-- Overlay -->
-      <div class="coming-soon-overlay">
-        <div class="overlay-icon">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <h3 class="overlay-title">Coming Soon</h3>
-        <p class="overlay-desc">Creator-scoped subscriber listing will be available in a future update.</p>
+      <div v-else-if="subscriptions.length === 0">
+        <EmptyState
+          title="No subscribers yet"
+          description="When someone subscribes to one of your plans, they'll show up here."
+        />
       </div>
-    </div>
+
+      <div v-else class="list">
+        <div v-for="sub in subscriptions" :key="sub.id" class="card sub-card">
+          <div class="sub-top">
+            <div class="sub-id">
+              <span class="label">Subscription</span>
+              <code class="mono">{{ shortId(sub.id) }}</code>
+            </div>
+            <StatusBadge :status="sub.status" />
+          </div>
+
+          <div class="sub-meta">
+            <div class="meta-item">
+              <span class="meta-label">Plan</span>
+              <span class="meta-value">{{ sub.plan?.name ?? "—" }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Amount</span>
+              <span class="meta-value">{{ formatUsdcDisplay(sub.plan?.amount ?? "0") }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Charges</span>
+              <span class="meta-value">{{ sub.chargeCount }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Total spent</span>
+              <span class="meta-value">{{ formatUsdcDisplay(sub.totalSpent) }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Subscribed</span>
+              <span class="meta-value">{{ formatDate(sub.createdAt) }}</span>
+            </div>
+          </div>
+
+          <div class="sub-addr">
+            <span class="label">Subscriber auth key</span>
+            <code class="mono small">{{ sub.authKeyId }}</code>
+          </div>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -44,6 +143,10 @@
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 28px;
 }
 
@@ -60,68 +163,83 @@
   font-size: 0.9375rem;
 }
 
-.coming-soon-wrap {
-  position: relative;
-  overflow: hidden;
-  border-radius: var(--radius-lg);
-}
-
-.mockup-grid {
+.list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  filter: blur(4px);
-  opacity: 0.4;
-  pointer-events: none;
 }
 
-.mockup-card {
+.sub-card {
   padding: 20px 24px;
 }
 
-.mockup-row {
+.sub-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
-.mockup-details {
+.sub-id {
   display: flex;
-  gap: 24px;
+  align-items: center;
+  gap: 10px;
 }
 
-.coming-soon-overlay {
-  position: absolute;
-  inset: 0;
+.label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.mono.small {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.sub-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 8px;
+  gap: 2px;
+  min-width: 0;
 }
 
-.overlay-icon {
-  color: var(--accent);
-  animation: float 3s ease-in-out infinite;
-  margin-bottom: 4px;
+.meta-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.overlay-title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--text-primary), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.overlay-desc {
-  margin: 0;
+.meta-value {
   font-size: 0.875rem;
-  color: var(--text-secondary);
-  max-width: 300px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sub-addr {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>

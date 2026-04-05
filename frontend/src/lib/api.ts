@@ -125,6 +125,14 @@ export function getCharges(subscriptionId: string, token: string) {
   });
 }
 
+// ── Creator (API key) ────────────────────────────────────
+
+export function getCreatorSubscriptions(apiKey: string) {
+  return request<{ subscriptions: Subscription[] }>("/creators/subscriptions", {
+    headers: { "X-Api-Key": apiKey },
+  });
+}
+
 // ── Verification ─────────────────────────────────────────
 
 export function verifyAccess(

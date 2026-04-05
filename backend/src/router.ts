@@ -14,6 +14,7 @@ import { handleHealth } from "./routes/health";
 import { handleCreatePlan, handleGetPlan, handleListPlans } from "./routes/plans";
 import {
   handleCancelSubscription,
+  handleListCreatorSubscriptions,
   handleListSubscriptions,
   handleSubscribe,
 } from "./routes/subscriptions";
@@ -45,6 +46,9 @@ apiApp.get("/plans", (c) => handleListPlans(c.req.raw));
 apiApp.get("/plans/:planId", (c) => handleGetPlan(c.req.param("planId")));
 
 apiApp.post("/subscribe", (c) => handleSubscribe(c.req.raw));
+apiApp.get("/creators/subscriptions", (c) =>
+  handleListCreatorSubscriptions(c.req.raw),
+);
 apiApp.get("/subscriptions", (c) => handleListSubscriptions(c.req.raw));
 apiApp.delete("/subscriptions/:subscriptionId", (c) =>
   handleCancelSubscription(c.req.param("subscriptionId"), c.req.raw),

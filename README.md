@@ -2,6 +2,10 @@
 
 SubLink is a privacy-preserving subscription protocol powered by Unlink private transfers on Base Sepolia.
 
+* https://sublink.lol - Creator / Subscriber UI
+* https://explorer.sublink.lol - Admin explorer (public)
+* https://creator-1.sublink.lol - Creator 1 Demo Page
+
 ## Monorepo Layout
 
 - `frontend/` - main SubLink frontend (Vue + Vite)

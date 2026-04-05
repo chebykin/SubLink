@@ -60,11 +60,23 @@ export function useAccess() {
       const listToken = await getListToken();
       const { subscriptions } = await listSubscriptions(listToken, PLAN_ID);
 
-      const activeSub = subscriptions.find((s) => s.status === "active");
+      const activeSub = subscriptions.find(
+        (s) => s.status === "active" || s.status === "pending_activation",
+      );
 
       if (!activeSub) {
         accessState.value = "not-subscribed";
         await fetchPlanInfo();
+        return;
+      }
+
+      // For pending_activation subs the backend's verify would 402 (no
+      // paidThroughAt yet). Treat the subscription's existence as access
+      // for demo purposes and skip the server-side verify.
+      if (activeSub.status === "pending_activation") {
+        accessState.value = "verified";
+        subscriptionId.value = activeSub.id;
+        toast("Subscription active (pending activation).", "success");
         return;
       }
 

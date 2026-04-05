@@ -1,5 +1,7 @@
 export type SubscriptionStatus =
+  | "pending_activation"
   | "active"
+  | "past_due"
   | "cancelled"
   | "cancelled_by_failure"
   | "completed";

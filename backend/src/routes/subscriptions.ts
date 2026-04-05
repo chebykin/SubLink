@@ -8,9 +8,11 @@ import {
   getSubscriptionById,
   getSubscriptionByPlanAndAuthKeyId,
   listSubscriptions,
+  updateSubscriptionBillingState,
 } from "../db/subscriptions";
 import {
   HttpError,
+  addSecondsToIso,
   errorResponse,
   jsonResponse,
   nowIso,
@@ -171,15 +173,29 @@ export async function handleSubscribe(request: Request): Promise<Response> {
         }
 
         if (creator.unlinkAddress.startsWith("unlink1placeholder-")) {
-          logInfo("subscription.activation_deferred", {
+          const activatedAt = nowIso();
+          const paidThroughAt = addSecondsToIso(activatedAt, plan.intervalSeconds);
+          const activated = updateSubscriptionBillingState({
+            id: existing.id,
+            status: "active",
+            totalSpent: "0",
+            chargeCount: 0,
+            consecutiveFailures: 0,
+            lastChargedAt: activatedAt,
+            paidThroughAt,
+            nextChargeAt: paidThroughAt,
+            cancelledAt: null,
+          });
+          logInfo("subscription.activation_simulated", {
             subscriptionId: existing.id,
             reason: "creator_unlink_address_placeholder",
             creatorId: creator.id,
+            paidThroughAt,
           });
           return jsonResponse(
             {
-              subscriptionId: existing.id,
-              firstCharge: { txId: null, status: "deferred" },
+              subscriptionId: activated?.id ?? existing.id,
+              firstCharge: { txId: null, status: "simulated" },
             },
             201,
           );
@@ -241,15 +257,29 @@ export async function handleSubscribe(request: Request): Promise<Response> {
     });
 
     if (creator.unlinkAddress.startsWith("unlink1placeholder-")) {
-      logInfo("subscription.activation_deferred", {
+      const activatedAt = nowIso();
+      const paidThroughAt = addSecondsToIso(activatedAt, plan.intervalSeconds);
+      const activated = updateSubscriptionBillingState({
+        id: subscription.id,
+        status: "active",
+        totalSpent: "0",
+        chargeCount: 0,
+        consecutiveFailures: 0,
+        lastChargedAt: activatedAt,
+        paidThroughAt,
+        nextChargeAt: paidThroughAt,
+        cancelledAt: null,
+      });
+      logInfo("subscription.activation_simulated", {
         subscriptionId: subscription.id,
         reason: "creator_unlink_address_placeholder",
         creatorId: creator.id,
+        paidThroughAt,
       });
       return jsonResponse(
         {
-          subscriptionId: subscription.id,
-          firstCharge: { txId: null, status: "deferred" },
+          subscriptionId: activated?.id ?? subscription.id,
+          firstCharge: { txId: null, status: "simulated" },
         },
         201,
       );

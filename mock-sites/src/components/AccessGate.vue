@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { SUBSCRIBE_URL } from "../lib/constants";
 import { formatUsdcDisplay, formatInterval } from "../lib/format";
 import type { Plan } from "../lib/types";
+import { useSubscribeModal } from "../composables/useSubscribeModal";
 
 defineProps<{
   planInfo: Plan | null;
   isConnected: boolean;
   onConnect: () => void;
 }>();
+
+const { openModal } = useSubscribeModal();
 </script>
 
 <template>
@@ -36,18 +38,17 @@ defineProps<{
       </div>
 
       <div class="gate-actions">
-        <a
+        <button
           v-if="isConnected"
-          :href="SUBSCRIBE_URL"
+          type="button"
           class="btn btn-primary"
-          target="_blank"
-          rel="noreferrer"
+          @click="openModal"
         >
-          Subscribe on SubLink
+          Subscribe
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M4 8h8m0 0l-3-3m3 3l-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-        </a>
+        </button>
         <button v-else class="btn btn-primary" @click="onConnect">
           Connect Wallet
         </button>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { SUBSCRIBE_URL } from "../lib/constants";
+import { useSubscribeModal } from "../composables/useSubscribeModal";
 
 const visible = ref(false);
+const { openModal } = useSubscribeModal();
 
 onMounted(() => {
   setTimeout(() => {
@@ -22,9 +23,9 @@ onMounted(() => {
           </svg>
           <span>Get access to exclusive content</span>
         </div>
-        <a :href="SUBSCRIBE_URL" class="btn btn-banner" target="_blank" rel="noreferrer">
+        <button type="button" class="btn btn-banner" @click="openModal">
           Subscribe
-        </a>
+        </button>
       </div>
     </div>
   </Transition>

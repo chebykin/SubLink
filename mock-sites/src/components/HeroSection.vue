@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { SITE_NAME, SUBSCRIBE_URL } from "../lib/constants";
+import { SITE_NAME } from "../lib/constants";
 import type { Plan } from "../lib/types";
 import { formatUsdcDisplay, formatInterval } from "../lib/format";
+import { useSubscribeModal } from "../composables/useSubscribeModal";
 
 const props = defineProps<{
   status: string;
   planInfo: Plan | null;
 }>();
+
+const { openModal } = useSubscribeModal();
 
 const showSubscribe = computed(
   () => props.status === "not-subscribed" || props.status === "idle",
@@ -34,18 +37,17 @@ const showVerified = computed(() => props.status === "verified");
 
       <div class="hero-actions">
         <Transition name="hero-action" mode="out-in">
-          <a
+          <button
             v-if="showSubscribe"
-            :href="SUBSCRIBE_URL"
+            type="button"
             class="btn btn-primary"
-            target="_blank"
-            rel="noreferrer"
+            @click="openModal"
           >
             Subscribe
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-          </a>
+          </button>
           <span v-else-if="showVerified" class="verified-badge">
             <svg class="check-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
               <circle cx="10" cy="10" r="9" stroke="var(--success)" stroke-width="2" />

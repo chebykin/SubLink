@@ -3,6 +3,7 @@ import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import {
   AUTH_DOMAIN,
   AUTH_BEARER_PREFIX,
+  AUTH_PROOF_PREFIX,
   BEARER_TOKEN_LIFETIME_SECONDS,
 } from "./constants";
 
@@ -38,4 +39,22 @@ export async function createListToken(
   authAccount: PrivateKeyAccount,
 ): Promise<string> {
   return createBearerToken(authAccount, "list");
+}
+
+export function buildSubscribeProofMessage(
+  planId: string,
+  unlinkAddress: string,
+  authKeyId: string,
+): string {
+  return `${AUTH_PROOF_PREFIX}:${planId}:${unlinkAddress}:${authKeyId.toLowerCase()}`;
+}
+
+export async function signSubscribeProof(
+  authAccount: PrivateKeyAccount,
+  planId: string,
+  unlinkAddress: string,
+): Promise<`0x${string}`> {
+  const authKeyId = authAccount.address.toLowerCase();
+  const message = buildSubscribeProofMessage(planId, unlinkAddress, authKeyId);
+  return authAccount.signMessage({ message });
 }

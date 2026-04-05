@@ -1,5 +1,11 @@
 import { API_URL } from "./constants";
-import type { Subscription, VerifyResponse } from "./types";
+import type {
+  PlanDetails,
+  SubscribeBody,
+  SubscribeResponse,
+  Subscription,
+  VerifyResponse,
+} from "./types";
 
 class ApiError extends Error {
   constructor(
@@ -35,6 +41,19 @@ export function listSubscriptions(
   const q = planId ? `?planId=${planId}` : "";
   return request(`/subscriptions${q}`, {
     headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function getPlan(planId: string): Promise<PlanDetails> {
+  return request(`/plans/${encodeURIComponent(planId)}`);
+}
+
+export function createSubscription(
+  body: SubscribeBody,
+): Promise<SubscribeResponse> {
+  return request(`/subscribe`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 

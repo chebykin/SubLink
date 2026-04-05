@@ -8,6 +8,7 @@ import ContentGrid from "./components/ContentGrid.vue";
 import AccessGate from "./components/AccessGate.vue";
 import SubscribeBanner from "./components/SubscribeBanner.vue";
 import SublinkBadge from "./components/SublinkBadge.vue";
+import SubscribeModal from "./components/SubscribeModal.vue";
 import ToastContainer from "./components/ToastContainer.vue";
 
 const { isConnected } = useWallet();
@@ -44,6 +45,7 @@ function openConnect() {
 
   <SubscribeBanner v-if="!hasAccess" />
   <SublinkBadge />
+  <SubscribeModal />
   <ToastContainer />
 </template>
 

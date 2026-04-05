@@ -170,6 +170,21 @@ export async function handleSubscribe(request: Request): Promise<Response> {
           );
         }
 
+        if (creator.unlinkAddress.startsWith("unlink1placeholder-")) {
+          logInfo("subscription.activation_deferred", {
+            subscriptionId: existing.id,
+            reason: "creator_unlink_address_placeholder",
+            creatorId: creator.id,
+          });
+          return jsonResponse(
+            {
+              subscriptionId: existing.id,
+              firstCharge: { txId: null, status: "deferred" },
+            },
+            201,
+          );
+        }
+
         try {
           return await attemptActivationCharge({
             subscription: {
@@ -224,6 +239,21 @@ export async function handleSubscribe(request: Request): Promise<Response> {
       paidThroughAt: subscription.paidThroughAt,
       nextChargeAt: subscription.nextChargeAt,
     });
+
+    if (creator.unlinkAddress.startsWith("unlink1placeholder-")) {
+      logInfo("subscription.activation_deferred", {
+        subscriptionId: subscription.id,
+        reason: "creator_unlink_address_placeholder",
+        creatorId: creator.id,
+      });
+      return jsonResponse(
+        {
+          subscriptionId: subscription.id,
+          firstCharge: { txId: null, status: "deferred" },
+        },
+        201,
+      );
+    }
 
     return await attemptActivationCharge({
       subscription: {

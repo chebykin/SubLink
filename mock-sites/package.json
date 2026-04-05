@@ -12,9 +12,9 @@
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-wagmi": "^1.8.19",
     "@tanstack/vue-query": "^5.96.2",
-    "@unlink-xyz/sdk": "^0.0.2-canary.0",
+    "@unlink-xyz/sdk": "^0.1.0-canary.1",
     "@wagmi/vue": "^0.5.1",
-    "@zk-kit/eddsa-poseidon": "^1.1.0",
+    "buffer": "^6.0.3",
     "viem": "^2.47.10",
     "vue": "latest"
   },

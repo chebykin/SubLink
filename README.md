@@ -98,11 +98,11 @@ sequenceDiagram
     W-->>C: signature
     Note over C: authSeed = keccak256(sig)<br/>authKey = privKey(authSeed)
 
-    Note over C: sign "sublink-bearer-v1:list:&lt;expiry&gt;" with authKey<br/>→ list token: list.&lt;expiry&gt;.&lt;sig&gt;
+    Note over C: sign 'sublink-bearer-v1:list:[expiry]' with authKey<br/>list token = list.[expiry].[sig]
     C->>S: GET /subscriptions?planId=X<br/>Bearer: list token
     S-->>C: active subscription { id }
 
-    Note over C: sign "sublink-bearer-v1:&lt;subId&gt;:&lt;expiry&gt;" with authKey<br/>→ bearer token: &lt;subId&gt;.&lt;expiry&gt;.&lt;sig&gt;
+    Note over C: sign 'sublink-bearer-v1:[subId]:[expiry]' with authKey<br/>bearer token = [subId].[expiry].[sig]
     C->>S: GET /verify/:planId<br/>Bearer: bearer token<br/>x-api-key: creator key
     S->>S: ECDSA recover → authKeyId<br/>check subscription + paidThroughAt
     S-->>C: 200 OK  (or 402 + plan metadata)

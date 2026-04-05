@@ -1,6 +1,7 @@
 import {
   createUnlink,
   unlinkAccount,
+  UnlinkApiError,
   type AccountKeys,
   type UnlinkClient,
 } from "@unlink-xyz/sdk";
@@ -12,6 +13,7 @@ import {
   UNLINK_API_KEY,
   USDC_ADDRESS,
 } from "../config";
+import { logError, logWarn } from "../log";
 import { deserializeAccountKeys } from "./account-keys";
 
 export interface ChargeExecutionResult {
@@ -75,6 +77,36 @@ export function findTokenBalance(
   return match?.amount ?? "0";
 }
 
+const loggingFetch = async (
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> => {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    // Clone so the SDK can still read the body itself.
+    const clone = response.clone();
+    let bodyText = "";
+    try {
+      bodyText = await clone.text();
+    } catch {
+      bodyText = "<unreadable>";
+    }
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    logWarn("unlink.api.error", {
+      method: init?.method ?? "GET",
+      url,
+      status: response.status,
+      body: bodyText.slice(0, 2_000),
+    });
+  }
+  return response;
+};
+
 export function createUnlinkClientFromAccountKeys(
   accountKeys: AccountKeys,
 ): UnlinkClient {
@@ -83,6 +115,7 @@ export function createUnlinkClientFromAccountKeys(
     engineUrl: config.engineUrl,
     apiKey: config.apiKey,
     account: unlinkAccount.fromKeys(accountKeys),
+    customFetch: loggingFetch as typeof fetch,
   });
 }
 
@@ -114,7 +147,7 @@ export async function executeTransferFromSerializedKeys(params: {
     const accountKeys = deserializeAccountKeys(params.accountKeysJson);
     const unlink = createUnlinkClientFromAccountKeys(accountKeys);
 
-    return withAccountTransferLock(accountKeys.address, async () => {
+    return await withAccountTransferLock(accountKeys.address, async () => {
       // Balance pre-check is advisory. Transfer still remains the source of truth.
       const balance = await getPrivateTokenBalance({ unlink, token });
       if (balance < BigInt(params.amount)) {
@@ -166,6 +199,23 @@ export async function executeTransferFromSerializedKeys(params: {
       };
     });
   } catch (error) {
+    if (error instanceof UnlinkApiError) {
+      logError("unlink.transfer.failed", {
+        operation: error.operation,
+        code: error.code,
+        detail: error.detail,
+        recipientAddress: params.recipientAddress,
+        amount: params.amount,
+        token,
+      });
+    } else {
+      logError("unlink.transfer.exception", {
+        message: error instanceof Error ? error.message : String(error),
+        recipientAddress: params.recipientAddress,
+        amount: params.amount,
+        token,
+      });
+    }
     return {
       status: "failed",
       txId: null,

@@ -12,15 +12,17 @@ const { steps, running, done, error, plan, depositAmount, run, reset } =
   useSubscribe();
 const { planInfo: accessPlanInfo } = useAccess();
 
-// Auto-start the flow when the modal opens
+// Auto-start the flow when the modal opens. Always reset on open so a
+// re-open after a previous successful / failed run starts clean.
 watch(open, (isOpen) => {
-  if (isOpen && !running.value && !done.value) {
-    if (!PLAN_ID) {
-      error.value = "Site not configured: missing PLAN_ID";
-      return;
-    }
-    void run(PLAN_ID);
+  if (!isOpen) return;
+  if (running.value) return;
+  if (!PLAN_ID) {
+    error.value = "Site not configured: missing PLAN_ID";
+    return;
   }
+  reset();
+  void run(PLAN_ID);
 });
 
 // When the flow finishes successfully, auto-close after a beat

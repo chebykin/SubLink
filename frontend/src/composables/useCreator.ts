@@ -79,16 +79,16 @@ export function useCreator() {
       return existing;
     }
 
-    // 2. No creator for this wallet yet — auto-create with a default name
-    //    (user can rename later). Reuses the same proof so no extra signature.
+    // 2. No creator for this wallet yet — auto-create using the wallet
+    //    address as the backend name (it's required non-empty). The UI
+    //    shows the address from `evmAddress` directly, not `name`.
     //    unlinkAddress is unique-per-wallet until the real Unlink SDK
     //    derivation is wired in; the DB has UNIQUE(unlink_address), so a
     //    shared literal would 409 every second wallet.
-    const defaultName = `Creator ${evmAddress.slice(2, 8)}`;
     const unlinkPlaceholder = `unlink1placeholder-${evmAddress.slice(2).toLowerCase()}`;
     try {
       await createCreator({
-        name: defaultName,
+        name: evmAddress,
         unlinkAddress: unlinkPlaceholder,
         proof,
       });

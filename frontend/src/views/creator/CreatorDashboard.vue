@@ -15,7 +15,6 @@ const { add: toast } = useToast();
 
 const plans = ref<Plan[]>([]);
 const loading = ref(true);
-const creatorName = computed(() => stored.value?.name ?? "Creator");
 const actionsRef = ref<HTMLElement | null>(null);
 
 useReveal(actionsRef);
@@ -60,8 +59,7 @@ const totalPlans = computed(() => plans.value.length);
 
     <template v-else>
       <div class="page-header">
-        <h1 class="page-title">Welcome, {{ creatorName }}</h1>
-        <p class="page-subtitle">Creator Dashboard</p>
+        <h1 class="page-title">Creator Dashboard</h1>
       </div>
 
       <div v-if="loading" class="stats-grid">
@@ -83,6 +81,13 @@ const totalPlans = computed(() => plans.value.length);
           <span class="cred-note">Use these to integrate your creator site with SubLink</span>
         </div>
         <div class="cred-grid">
+          <div class="cred-item">
+            <span class="cred-label">Public Wallet</span>
+            <div class="cred-row">
+              <code>{{ stored!.evmAddress }}</code>
+              <CopyButton :text="stored!.evmAddress" label="Public wallet address" />
+            </div>
+          </div>
           <div class="cred-item">
             <span class="cred-label">Creator ID</span>
             <div class="cred-row">

@@ -86,8 +86,6 @@ If the subscriber has no token or an invalid one, the endpoint returns a 402 wit
 
 ### End-to-End Access Flow
 
-The bearer token is minted **locally on the creator's site** — SubLink never issues or stores tokens. The creator's site derives the subscriber's auth key from their wallet, then signs tokens with it.
-
 ```mermaid
 sequenceDiagram
     participant U as Subscriber<br/>(browser)
@@ -100,18 +98,21 @@ sequenceDiagram
     W-->>C: signature
     Note over C: authSeed = keccak256(sig)<br/>authKey = privKey(authSeed)
 
-    C->>C: sign list token with authKey
+    Note over C: sign "sublink-bearer-v1:list:&lt;expiry&gt;" with authKey<br/>→ list token: list.&lt;expiry&gt;.&lt;sig&gt;
     C->>S: GET /subscriptions?planId=X<br/>Bearer: list token
     S-->>C: active subscription { id }
 
-    C->>C: sign bearer token with authKey<br/>subId.expiry.signature
-    C->>S: GET /verify/:planId<br/>Bearer: token<br/>x-api-key: creator key
+    Note over C: sign "sublink-bearer-v1:&lt;subId&gt;:&lt;expiry&gt;" with authKey<br/>→ bearer token: &lt;subId&gt;.&lt;expiry&gt;.&lt;sig&gt;
+    C->>S: GET /verify/:planId<br/>Bearer: bearer token<br/>x-api-key: creator key
     S->>S: ECDSA recover → authKeyId<br/>check subscription + paidThroughAt
     S-->>C: 200 OK  (or 402 + plan metadata)
     C-->>U: unlock content
 ```
 
-The creator's site is the token issuer. SubLink only verifies tokens it has never seen. No sessions, no login, no OAuth — two wallet signatures derive the auth key once, then the site signs tokens locally forever.
+Both tokens use the same format — `<id>.<expiry>.<sig>` where `sig` is ECDSA over `sublink-bearer-v1:<id>:<expiry>` signed with the auth key. They differ only in scope:
+
+- **List token** (`id = "list"`) — used once to ask SubLink which subscription this auth key has for a given plan.
+- **Bearer token** (`id = <subscriptionId>`) — used to prove ongoing access to a specific subscription. Sent on every verify call.
 
 ## Creators
 

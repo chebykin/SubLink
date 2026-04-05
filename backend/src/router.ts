@@ -38,6 +38,9 @@ apiApp.get("/health", () => handleHealth());
 
 apiApp.post("/creators", (c) => handleCreateCreator(c.req.raw));
 apiApp.post("/creators/reveal", (c) => handleRevealCreator(c.req.raw));
+apiApp.get("/creators/subscriptions", (c) =>
+  handleListCreatorSubscriptions(c.req.raw),
+);
 apiApp.get("/creators/by-evm/:evmAddress", (c) => handleGetCreatorByEvmAddress(c.req.param("evmAddress")));
 apiApp.get("/creators/:creatorId", (c) => handleGetCreator(c.req.param("creatorId")));
 
@@ -46,9 +49,6 @@ apiApp.get("/plans", (c) => handleListPlans(c.req.raw));
 apiApp.get("/plans/:planId", (c) => handleGetPlan(c.req.param("planId")));
 
 apiApp.post("/subscribe", (c) => handleSubscribe(c.req.raw));
-apiApp.get("/creators/subscriptions", (c) =>
-  handleListCreatorSubscriptions(c.req.raw),
-);
 apiApp.get("/subscriptions", (c) => handleListSubscriptions(c.req.raw));
 apiApp.delete("/subscriptions/:subscriptionId", (c) =>
   handleCancelSubscription(c.req.param("subscriptionId"), c.req.raw),
